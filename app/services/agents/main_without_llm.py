@@ -57,6 +57,12 @@ from utils.payload_utils import (
     serialize_payload_to_b64, 
     deserialize_payload_from_b64
 )
+from utils.a2a_helpers import (
+    WeightExchangePayload,
+    parse_incoming_request,
+    send_a2a_response,
+    send_and_parse_a2a_message
+)
 
 load_dotenv()
 
@@ -105,11 +111,7 @@ class AgentState:
 # Create a single, global instance of our agent's state
 state_singleton = AgentState()
 
-
-# Define the Pydantic model for JSON payload exchanged by agents
-class WeightExchangePayload(BaseModel):
-    agent_id: str
-    payload_b64: str
+# --- Core Logic Functions ---
 
 def thread_safe_merge_and_evaluate(state: AgentState, payload_1: dict, payload_2: dict, role: str):
     """
@@ -119,27 +121,27 @@ def thread_safe_merge_and_evaluate(state: AgentState, payload_1: dict, payload_2
     with state.model_lock:
         logging.info(f"Merging payloads... (as {role})")
         
-        # 1. Merge the two trained models (from the stale state)
-        trained_merge = merge_payloads(payload_1, payload_2, alpha=0.5)
+        # 1. Merge the two trained models (FedAvg)
+        merged_payload = merge_payloads(payload_1, payload_2, alpha=0.5)
 
-        # 2. Get the *current* global model (which may have been updated)
-        current_global_payload = get_trainable_state_dict(state.global_model)
-
-        # 3. Merge the stale merge with the current global to "catch up"
-        final_merged_payload = merge_payloads(current_global_payload, trained_merge, alpha=0.5)
+        # 2. Update our global model with this new merge
+        update_global_model(state.global_model, merged_payload)
         
-        # 4. Update our global model
-        update_global_model(state.global_model, final_merged_payload)
+        # 3. Increment round for logging
         state.round_num += 1 
+        new_round_num = state.round_num
         
-        # 5. Evaluate
-        val_loss, val_acc, _, _ = evaluate(
-            state.global_model, 
-            state.val_loader, 
-            state.device, 
-            state.criterion
-        )
-        logging.info(f"Round {state.round_num} ({role}) Merged Accuracy: {val_acc:.2f}%")
+        # 4. Copy the model for evaluation *inside* the lock
+        model_to_eval = copy.deepcopy(state.global_model)
+        
+    # 5. Evaluate
+    val_loss, val_acc, correct, total = evaluate(
+        model_to_eval, 
+        state.val_loader, 
+        state.device, 
+        state.criterion
+    )
+    logging.info(f"Round {new_round_num} ({role}) Merged Accuracy: {val_acc:.2f}% ({correct}/{total})")
 
 
 # --- 3. A2A Responder Logic (The "Reactive" Part) ---
@@ -160,35 +162,15 @@ class FederatedAgentExecutor(AgentExecutor):
         
         # 1. Deserialize and verify initiator's payload from the request
         try:
-            if not context.message.parts:
-                raise ValueError("Request message has no parts")
-            
-            # A Part is a RootModel, so we access its content via .root
-            part_root = context.message.parts[0].root
-
-            # Check for the correct kind: 'data'
-            if part_root.kind != 'data':
-                raise ValueError(f"Expected part kind 'data', but got '{part_root.kind}'")
-                
-            request_data_dict = part_root.data
-            request_data = WeightExchangePayload(**request_data_dict)
-
-            initiator_payload = deserialize_payload_from_b64(
-                request_data.payload_b64, self.state.global_model
+            request_data, initiator_payload = parse_incoming_request(
+                context, self.state.global_model
             )
-
-            if not initiator_payload:
-                raise ValueError("Received corrupt payload")
-            logging.info(f"Received valid payload from {request_data.agent_id}")
-            
         except Exception as e:
             logging.error(f"Payload deserialization failed: {e}")
             await event_queue.enqueue_event(
                 new_agent_text_message(f"Error: Corrupt payload: {e}")
             )
             return
-
-        # --- This is the core logic from your FastAPI responder ---
         
         # 2. Train our *own* local model
         # We acquire a lock to ensure the initiator thread isn't
@@ -221,23 +203,9 @@ class FederatedAgentExecutor(AgentExecutor):
         
         # 5. Manually build the JSON response message
         try:
-            # Create the specific DataPart
-            response_data_part = DataPart(data=response_payload.model_dump())
-            # Create the generic Part wrapper
-            response_part = Part(root=response_data_part)
-            # Create the Message
-            response_message = Message(
-                role='agent',
-                parts=[response_part],
-                messageId=uuid4().hex
-            )
-            
-            # 6. Send our message back to the event queue
-            await event_queue.enqueue_event(response_message)
-            logging.info("Sent responder payload in response.")
-
+            await send_a2a_response(event_queue, response_payload)
         except Exception as e:
-            logging.error(f"Failed to build or enqueue response message: {e}")
+            logging.error(f"Failed to send response: {e}")
             await event_queue.enqueue_event(
                 new_agent_text_message(f"Error: Failed to build response: {e}")
             )
@@ -268,27 +236,17 @@ async def get_partner_client(httpx_client: httpx.AsyncClient, partner_url: str) 
     Resolves the partner's agent card and initializes an A2AClient.
     Retries a few times if the partner server isn't up yet.
     """
-    resolver = A2ACardResolver(
-        httpx_client=httpx_client,
-        base_url=partner_url,
-    )
-    
+    resolver = A2ACardResolver(httpx_client=httpx_client, base_url=partner_url)
     for attempt in range(5):
         try:
             logging.info(f"Attempting to resolve partner card at {partner_url}...")
             partner_card = await resolver.get_agent_card()
             logging.info(f"Successfully resolved partner: {partner_card.name}")
-            
             config = ClientConfig(httpx_client=httpx_client)
-
-            return await ClientFactory.connect(
-                agent=partner_card,
-                client_config=config
-            )
+            return await ClientFactory.connect(agent=partner_card, client_config=config)
         except Exception as e:
             logging.warning(f"Failed to resolve partner card (attempt {attempt+1}/5): {e}")
-            await asyncio.sleep(10) # Wait 10s before retrying
-    
+            await asyncio.sleep(10)
     logging.error("Could not resolve partner agent card. Initiator loop will not run.")
     return None
 
@@ -309,7 +267,7 @@ async def initiator_loop(state: AgentState, partner_url: str):
             return # Failed to connect to partner
 
         for round_num in range(NUM_ROUNDS):
-            state.round_num += 1
+
             logging.info(f"\n--- {state.agent_id} | Initiator Round {state.round_num}/{NUM_ROUNDS} ---")
         
             # 2. Train local model
@@ -339,65 +297,11 @@ async def initiator_loop(state: AgentState, partner_url: str):
             # Build the A2A SendMessageRequest
             logging.info("Sending initiator payload to partner...")
             try:
-                # Create the JSON message part
-                message_part_data = {
-                    "kind": "data",
-                    "data": request_payload_obj.model_dump()
-                }
-                
-                # Create the request
-                message_to_send = Message(
-                    role="user",
-                    parts=[message_part_data],
-                    messageId=uuid4().hex
+                response_data, responder_payload = await send_and_parse_a2a_message(
+                    client, request_payload_obj, state.global_model
                 )
-
-                # Send the message
-                response_generator = client.send_message(message_to_send)
-                response_item = None
-                async for item in response_generator:
-                    response_item = item
-                    break # We expect only one item, so we break
-
-                if response_item is None:
-                    raise Exception("Agent did not return a response")
                 
-                
-                response_message: Message | None = None
-
-                # The generator yields either a Message or a ClientEvent (Task, update)
-                if isinstance(response_item, Message):
-                    # This is the simple case. The response is the message.
-                    response_message = response_item
-                elif isinstance(response_item, tuple) and isinstance(response_item[0], Task):
-                    # This is a ClientEvent (Task, update)
-                    task: Task = response_item[0]
-                    if task.history:
-                        response_message = task.history[-1] # Get last message from task
-                    else:
-                        raise Exception("Received a Task object with no history")
-                else:
-                    raise Exception(f"Received unexpected response type: {type(response_item)}")
-                
-                if not response_message.parts:
-                    raise ValueError("Response message has no parts")
-                
-                part_root = response_message.parts[0].root
-                if part_root.kind != 'data':
-                    raise ValueError(f"Response part is not 'data', got {part_root.kind}")
-                
-                response_data_dict = part_root.data
-                response_data = WeightExchangePayload(**response_data_dict)
-                
-                responder_payload = deserialize_payload_from_b64(
-                    response_data.payload_b64, state.global_model
-                )
-                if not responder_payload:
-                    raise ValueError("Received corrupt payload from responder")
-                
-                logging.info(f"Received valid payload from {response_data.agent_id}")
-
-            
+                # 4. Merge
                 thread_safe_merge_and_evaluate(
                     state=state,
                     payload_1=my_payload,
@@ -406,9 +310,9 @@ async def initiator_loop(state: AgentState, partner_url: str):
                 )
 
             except Exception as e:
-                logging.error(f"Weight exchange failed for round {state.round_num}: {e}", exc_info=True)
+                logging.error(f"Weight exchange failed for round {round_num + 1}: {e}", exc_info=True)
                 logging.error("Skipping merge for this round.")
-                await asyncio.sleep(10) #wait before retrying
+                await asyncio.sleep(10)
                 continue
         
         # Wait before starting the next round
