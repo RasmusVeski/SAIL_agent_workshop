@@ -111,6 +111,36 @@ class WeightExchangePayload(BaseModel):
     agent_id: str
     payload_b64: str
 
+def thread_safe_merge_and_evaluate(state: AgentState, payload_1: dict, payload_2: dict, role: str):
+    """
+    Atomically merges two trained payloads with the current global model,
+    updates the global model, and logs the new accuracy.
+    """
+    with state.model_lock:
+        logging.info(f"Merging payloads... (as {role})")
+        
+        # 1. Merge the two trained models (from the stale state)
+        trained_merge = merge_payloads(payload_1, payload_2, alpha=0.5)
+
+        # 2. Get the *current* global model (which may have been updated)
+        current_global_payload = get_trainable_state_dict(state.global_model)
+
+        # 3. Merge the stale merge with the current global to "catch up"
+        final_merged_payload = merge_payloads(current_global_payload, trained_merge, alpha=0.5)
+        
+        # 4. Update our global model
+        update_global_model(state.global_model, final_merged_payload)
+        state.round_num += 1 
+        
+        # 5. Evaluate
+        val_loss, val_acc, _, _ = evaluate(
+            state.global_model, 
+            state.val_loader, 
+            state.device, 
+            state.criterion
+        )
+        logging.info(f"Round {state.round_num} ({role}) Merged Accuracy: {val_acc:.2f}%")
+
 
 # --- 3. A2A Responder Logic (The "Reactive" Part) ---
 # This Executor handles *incoming* requests from other agents.
@@ -163,16 +193,20 @@ class FederatedAgentExecutor(AgentExecutor):
         # 2. Train our *own* local model
         # We acquire a lock to ensure the initiator thread isn't
         # modifying the model at the same time.
+
         with self.state.model_lock:
-            logging.info("Training local model (as responder)...")
-            local_model, _ = train(
-                model=copy.deepcopy(self.state.global_model),
-                train_loader=self.state.train_loader,
-                val_loader=None,
-                global_model=self.state.global_model, # For FedProx
-                device=self.state.device,
-                **self.state.agent_hps
-            )
+            logging.info("Copying global model for responder training...")
+            local_model_to_train = copy.deepcopy(self.state.global_model)
+
+        logging.info("Training local model (as responder)...")
+        local_model, _ = train(
+            model=local_model_to_train,
+            train_loader=self.state.train_loader,
+            val_loader=None,
+            global_model=local_model_to_train, # For FedProx
+            device=self.state.device,
+            **self.state.agent_hps
+        )
 
         # 3. Prepare *our* payload to send back
         my_payload = get_trainable_state_dict(local_model)
@@ -208,22 +242,14 @@ class FederatedAgentExecutor(AgentExecutor):
                 new_agent_text_message(f"Error: Failed to build response: {e}")
             )
             return
-
-        # 5. Merge! (We have both payloads now)
-        # We lock again to safely update the shared global_model
-        with self.state.model_lock:
-            logging.info("Merging payloads...")
-            merged_payload = merge_payloads(my_payload, initiator_payload, alpha=0.5)
             
-            # 6. Update our global model
-            update_global_model(self.state.global_model, merged_payload)
-            self.state.round_num += 1 # Increment round
-            
-            # 7. Evaluate
-            val_loss, val_acc, _, _ = evaluate(
-                self.state.global_model, self.state.val_loader, self.state.device, self.state.criterion
-            )
-            logging.info(f"Round {self.state.round_num} (Responder) Merged Accuracy: {val_acc:.2f}%")
+        # Update our global model
+        thread_safe_merge_and_evaluate(
+            state=self.state,
+            payload_1=my_payload,
+            payload_2=initiator_payload,
+            role="Responder"
+        )
 
     async def cancel(
         self, context: RequestContext, event_queue: EventQueue
@@ -372,19 +398,12 @@ async def initiator_loop(state: AgentState, partner_url: str):
                 logging.info(f"Received valid payload from {response_data.agent_id}")
 
             
-                # 2e. Merge, Update, and Evaluate (with lock)
-                with state.model_lock:
-                    logging.info("Merging payloads... (as Initiator)")
-                    merged_payload = merge_payloads(my_payload, responder_payload, alpha=0.5)
-
-                    # 6. Update our global model
-                    update_global_model(state.global_model, merged_payload)
-                    
-                    # 7. Evaluate
-                    val_loss, val_acc, _, _ = evaluate(
-                        state.global_model, state.val_loader, state.device, state.criterion
-                    )
-                    logging.info(f"Round {state.round_num} (Initiator) Merged Accuracy: {val_acc:.2f}%")
+                thread_safe_merge_and_evaluate(
+                    state=state,
+                    payload_1=my_payload,
+                    payload_2=responder_payload,
+                    role="Initiator"
+                )
 
             except Exception as e:
                 logging.error(f"Weight exchange failed for round {state.round_num}: {e}", exc_info=True)
