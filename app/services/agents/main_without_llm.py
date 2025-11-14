@@ -77,7 +77,7 @@ AGENT_HPS = {
     'weight_decay': 1e-3, 
     'mu': 0.5, # FedProx term
     'val_frequency': 1,       
-    'lr_scheduler_step_size': 999
+    'lr_scheduler_step_size': 999 #For one epoch training
 }
 
 
