@@ -63,11 +63,11 @@ load_dotenv()
 # --- 1. Agent Configuration ---
 # Defined in .env
 AGENT_ID = os.getenv("AGENT_ID")
-PORT = int(os.getenv("PORT"))
+PORT = int(os.getenv("PORT", "9000"))
 PUBLIC_URL = os.getenv("PUBLIC_URL")
-BASE_DATA_DIR = os.getenv("BASE_DATA_DIR")
+BASE_DATA_DIR = os.getenv("BASE_DATA_DIR", "./app/sharded_data")
 DATA_DIR_NAME = os.getenv("DATA_DIR_NAME")
-VAL_DIR_NAME = os.getenv("VAL_DIR_NAME")
+VAL_DIR_NAME = os.getenv("VAL_DIR_NAME", "test1")
 
 PARTNER_URLS_STR = os.getenv("PARTNER_URLS")
 PARTNER_URLS = [url.strip() for url in PARTNER_URLS_STR.split(',') if url.strip()]
@@ -503,8 +503,7 @@ if __name__ == '__main__':
     
     # 5. Build the app and add our startup hook
     app = server.build()
-    startup_handler = functools.partial(on_startup, config=config_data)
-    app.add_event_handler("startup", startup_handler)
+    app.add_event_handler("startup", on_startup)
 
     # 6. Run the Uvicorn server
     logging.info(f"Starting A2A server for {AGENT_ID} on 0.0.0.0:{PORT}")
