@@ -29,4 +29,4 @@ EXPOSE 9000
 
 # 8. Define the runtime command
 # This is the command that will run when the container starts.
-CMD ["python", "app/services/agents/main_without_llm.py"]
+CMD ["python", "services/agents/main_without_llm.py"]
