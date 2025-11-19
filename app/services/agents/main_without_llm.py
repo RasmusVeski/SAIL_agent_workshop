@@ -181,7 +181,8 @@ class FederatedAgentExecutor(AgentExecutor):
             local_model_to_train = copy.deepcopy(self.state.global_model)
 
         logging.info("Training local model (as responder)...")
-        local_model, _ = train(
+        local_model, _ = await asyncio.to_thread(
+            train,
             model=local_model_to_train,
             train_loader=self.state.train_loader,
             val_loader=None,
