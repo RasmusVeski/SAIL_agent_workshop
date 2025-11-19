@@ -78,8 +78,6 @@ VAL_DIR_NAME = os.getenv("VAL_DIR_NAME", "test1")
 PARTNER_URLS_STR = os.getenv("PARTNER_URLS")
 PARTNER_URLS = [url.strip() for url in PARTNER_URLS_STR.split(',') if url.strip()]
 
-logging.info(f"RUNNING NEWEST VERSION")
-
 
 # Training Hyperparameters
 NUM_ROUNDS = 20 # Number of rounds to *initiate*
@@ -115,26 +113,43 @@ state_singleton = AgentState()
 
 # --- Core Logic Functions ---
 
-async def thread_safe_merge_and_evaluate(state: AgentState, payload_1: dict, payload_2: dict, role: str):
+def _blocking_merge_logic(state: AgentState, payload_1: dict, payload_2: dict):
     """
-    Atomically merges two trained payloads with the current global model,
-    updates the global model, and logs the new accuracy.
+    Synchronous function that holds the lock and updates the model.
+    Safe to run in a thread.
     """
     with state.model_lock:
-        logging.info(f"Merging payloads... (as {role})")
-        
-        # 1. Merge the two trained models (FedAvg)
+        # 1. Merge
         merged_payload = merge_payloads(payload_1, payload_2, alpha=0.5)
-
-        # 2. Update our global model with this new merge
+        # 2. Update
         update_global_model(state.global_model, merged_payload)
-        
-        # 3. Increment round for logging
+        # 3. Increment round
         state.round_num += 1 
         new_round_num = state.round_num
-        
-        # 4. Copy the model for evaluation *inside* the lock
+        # 4. Deepcopy for eval
         model_to_eval = copy.deepcopy(state.global_model)
+        
+    return new_round_num, model_to_eval
+
+
+async def thread_safe_merge_and_evaluate(state: AgentState, payload_1: dict, payload_2: dict, role: str):
+    logging.info(f"Merging payloads... (as {role})")
+    
+    # 1. Run the LOCKING logic in a separate thread
+    # This prevents the Main Loop from freezing while waiting for the lock
+    new_round_num, model_to_eval = await asyncio.to_thread(
+        _blocking_merge_logic, state, payload_1, payload_2
+    )
+
+    # 2. Evaluate (also in a thread)
+    val_loss, val_acc, correct, total = await asyncio.to_thread(
+        evaluate,
+        model_to_eval, 
+        state.val_loader, 
+        state.device, 
+        state.criterion
+    )
+    logging.info(f"Round {new_round_num} ({role}) Merged Accuracy: {val_acc:.2f}% ({correct}/{total})")
         
     # 5. Evaluate -> OFFLOAD TO THREAD
     val_loss, val_acc, correct, total = await asyncio.to_thread(
@@ -175,13 +190,16 @@ class FederatedAgentExecutor(AgentExecutor):
             )
             return
         
+        def _safe_copy_model(state):
+            with state.model_lock:
+                return copy.deepcopy(state.global_model)
+        
         # 2. Train our *own* local model
         # We acquire a lock to ensure the initiator thread isn't
         # modifying the model at the same time.
 
-        with self.state.model_lock:
-            logging.info("Copying global model for responder training...")
-            local_model_to_train = copy.deepcopy(self.state.global_model)
+        logging.info("Copying global model for responder training...")
+        local_model_to_train = await asyncio.to_thread(_safe_copy_model, self.state)
 
         logging.info("Training local model (as responder)...")
         local_model, _ = await asyncio.to_thread(
@@ -189,7 +207,7 @@ class FederatedAgentExecutor(AgentExecutor):
             model=local_model_to_train,
             train_loader=self.state.train_loader,
             val_loader=None,
-            global_model=local_model_to_train, # For FedProx
+            global_model=local_model_to_train,
             device=self.state.device,
             **self.state.agent_hps
         )
@@ -276,9 +294,12 @@ async def initiator_loop(state: AgentState, partner_url: str):
         
             # 2. Train local model
             # We lock the model to ensure we get a clean copy
-            with state.model_lock:
-                logging.info("Training local model (as initiator)...")
-                current_global_model = copy.deepcopy(state.global_model)
+            def _safe_copy_model(state):
+                with state.model_lock:
+                    return copy.deepcopy(state.global_model)
+                
+            logging.info("Training local model (as initiator)...")
+            current_global_model = await asyncio.to_thread(_safe_copy_model, state)
         
             local_model, _ = await asyncio.to_thread(
                 train,
