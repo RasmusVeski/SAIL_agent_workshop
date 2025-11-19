@@ -113,7 +113,7 @@ state_singleton = AgentState()
 
 # --- Core Logic Functions ---
 
-def thread_safe_merge_and_evaluate(state: AgentState, payload_1: dict, payload_2: dict, role: str):
+async def thread_safe_merge_and_evaluate(state: AgentState, payload_1: dict, payload_2: dict, role: str):
     """
     Atomically merges two trained payloads with the current global model,
     updates the global model, and logs the new accuracy.
@@ -134,8 +134,9 @@ def thread_safe_merge_and_evaluate(state: AgentState, payload_1: dict, payload_2
         # 4. Copy the model for evaluation *inside* the lock
         model_to_eval = copy.deepcopy(state.global_model)
         
-    # 5. Evaluate
-    val_loss, val_acc, correct, total = evaluate(
+    # 5. Evaluate -> OFFLOAD TO THREAD
+    val_loss, val_acc, correct, total = await asyncio.to_thread(
+        evaluate,
         model_to_eval, 
         state.val_loader, 
         state.device, 
@@ -213,7 +214,7 @@ class FederatedAgentExecutor(AgentExecutor):
             return
             
         # Update our global model
-        thread_safe_merge_and_evaluate(
+        await thread_safe_merge_and_evaluate(
             state=self.state,
             payload_1=my_payload,
             payload_2=initiator_payload,
@@ -304,7 +305,7 @@ async def initiator_loop(state: AgentState, partner_url: str):
                 )
                 
                 # 4. Merge
-                thread_safe_merge_and_evaluate(
+                await thread_safe_merge_and_evaluate(
                     state=state,
                     payload_1=my_payload,
                     payload_2=responder_payload,
