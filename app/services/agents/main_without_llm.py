@@ -192,8 +192,8 @@ class FederatedAgentExecutor(AgentExecutor):
         )
 
         # 3. Prepare *our* payload to send back
-        my_payload = get_trainable_state_dict(local_model)
-        my_payload_b64 = serialize_payload_to_b64(my_payload)
+        my_payload = await asyncio.to_thread(get_trainable_state_dict(local_model))
+        my_payload_b64 = await asyncio.to_thread(serialize_payload_to_b64(my_payload))
 
         # 4. Send our payload back as the response
         response_payload = WeightExchangePayload(
@@ -277,7 +277,8 @@ async def initiator_loop(state: AgentState, partner_url: str):
                 logging.info("Training local model (as initiator)...")
                 current_global_model = copy.deepcopy(state.global_model)
         
-            local_model, _ = train(
+            local_model, _ = await asyncio.to_thread(
+                train,
                 model=current_global_model, # Train on the copied model
                 train_loader=state.train_loader,
                 val_loader=None,
@@ -287,8 +288,8 @@ async def initiator_loop(state: AgentState, partner_url: str):
             )
 
             # 2b. Prepare *our* payload
-            my_payload = get_trainable_state_dict(local_model)
-            my_payload_b64 = serialize_payload_to_b64(my_payload)
+            my_payload = await asyncio.to_thread(get_trainable_state_dict, local_model)
+            my_payload_b64 = await asyncio.to_thread(serialize_payload_to_b64, my_payload)
             request_payload_obj = WeightExchangePayload(
                 agent_id=state.agent_id,
                 payload_b64=my_payload_b64
