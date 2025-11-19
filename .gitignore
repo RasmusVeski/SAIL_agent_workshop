@@ -3,3 +3,5 @@ sharded_data
 __pycache__/
 *.py[cod]
 .env
+app/logs
+app/sharded_data
