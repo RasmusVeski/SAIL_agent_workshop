@@ -192,8 +192,8 @@ class FederatedAgentExecutor(AgentExecutor):
         )
 
         # 3. Prepare *our* payload to send back
-        my_payload = await asyncio.to_thread(get_trainable_state_dict(local_model))
-        my_payload_b64 = await asyncio.to_thread(serialize_payload_to_b64(my_payload))
+        my_payload = await asyncio.to_thread(get_trainable_state_dict, local_model)
+        my_payload_b64 = await asyncio.to_thread(serialize_payload_to_b64, my_payload)
 
         # 4. Send our payload back as the response
         response_payload = WeightExchangePayload(
