@@ -12,16 +12,6 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from a2a.server.apps.rest.fastapi_rest_app import A2ARESTAPI, a2a_server_error_handler
-from a2a.server.agent_execution import AgentExecutor, RequestContext
-from a2a.server.events import EventQueue
-from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
-from a2a.types import (
-    AgentCard, AgentSkill, Part, TextPart, AgentCapabilities, Message
-)
-from a2a.utils import new_task
-from a2a.utils.errors import ServerError
-
 # Our Federated Learning Utils
 from services.utils.model import FoodClassifier
 from services.utils.data_loader import create_dataloader
@@ -268,7 +258,7 @@ def main(host, port, data_client, peer_url):
     )
     state.load_data_and_model(
         data_client_id=data_client,
-        val_client_id="test1" # All agents use the same validation set
+        val_client_id="test1" # All agents use the same validation setW
     )
     
     # 2. Attach the state to the FastAPI app
