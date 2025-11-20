@@ -64,6 +64,12 @@ from utils.a2a_helpers import (
     send_and_parse_a2a_message
 )
 
+# WeightExchangePayload fields
+    #agent_id=self.state.agent_id,
+    #payload_b64=my_payload_b64
+
+
+
 load_dotenv()
 
 # --- 1. Agent Configuration ---

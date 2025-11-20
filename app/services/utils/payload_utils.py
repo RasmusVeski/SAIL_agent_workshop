@@ -4,6 +4,7 @@ import logging
 from io import BytesIO
 import copy
 import base64
+import zlib
 
 
 def get_trainable_state_dict(model: nn.Module) -> dict:
@@ -38,11 +39,25 @@ def serialize_payload_to_b64(state_dict: dict) -> str:
     safe for JSON/HTTP transfer.
     """
     try:
+        # Cast to Float16 to cut size in half
+        compressed_state_dict = {}
+        for k, v in state_dict.items():
+            if isinstance(v, torch.Tensor) and v.is_floating_point():
+                compressed_state_dict[k] = v.half() # Float16
+            else:
+                compressed_state_dict[k] = v
+
         buffer = BytesIO()
-        torch.save(state_dict, buffer)
-        payload_bytes = buffer.getvalue()
-        # Encode bytes as a base64 string
-        payload_b64_string = base64.b64encode(payload_bytes).decode('utf-8')
+        torch.save(compressed_state_dict, buffer)
+        raw_bytes = buffer.getvalue()
+        # Compress the bytes 
+        compressed_bytes = zlib.compress(raw_bytes)
+        # Encode to Base64 string
+        payload_b64_string = base64.b64encode(compressed_bytes).decode('utf-8')
+        
+        # Optional: Log savings
+        logging.debug(f"Compressed payload: {2*len(raw_bytes)} -> {len(compressed_bytes)} bytes")
+        
         return payload_b64_string
     except Exception as e:
         logging.error(f"Failed to serialize payload: {e}")
@@ -55,12 +70,23 @@ def deserialize_payload_from_b64(payload_b64_string: str, reference_model: nn.Mo
     state dict, and verifies its keys and shapes.
     """
     try:
-        # Decode the string back into bytes
-        payload_bytes = base64.b64decode(payload_b64_string)
+        # Decode from Base64 string to compressed bytes
+        compressed_bytes = base64.b64decode(payload_b64_string)
         
-        buffer = BytesIO(payload_bytes)
-        # Use weights_only=True for security
+        raw_bytes = zlib.decompress(compressed_bytes) # Decompress 
+        
+        buffer = BytesIO(raw_bytes) # Load into Torch
+        # Use weights_only=True for security 
         incoming_state_dict = torch.load(buffer, weights_only=True)
+
+        # Cast back to Float32
+        # This is critical because the model expects float32 for training
+        restored_state_dict = {}
+        for k, v in incoming_state_dict.items():
+             if isinstance(v, torch.Tensor) and v.is_floating_point():
+                restored_state_dict[k] = v.float() # Back to Float32
+             else:
+                restored_state_dict[k] = v
     except Exception as e:
         logging.error(f"Failed to deserialize payload: {e}", exc_info=True)
         return None

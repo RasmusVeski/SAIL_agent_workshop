@@ -13,12 +13,12 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 # Our Federated Learning Utils
-from services.utils.model import FoodClassifier
-from services.utils.data_loader import create_dataloader
-from services.utils.training import train, evaluate
-from services.utils.logger_setup import setup_logging
-from services.utils.federated_utils import merge_payloads, update_global_model
-from services.utils.payload_utils import (
+from app.services.utils.model import FoodClassifier
+from app.services.utils.data_loader import create_dataloader
+from app.services.utils.training import train, evaluate
+from app.services.utils.logger_setup import setup_logging
+from app.services.utils.federated_utils import merge_payloads, update_global_model
+from app.services.utils.payload_utils import (
     get_trainable_state_dict, 
     serialize_payload_to_b64, 
     deserialize_payload_from_b64
@@ -254,6 +254,7 @@ def main(host, port, data_client, peer_url):
     # 1. Create the single shared state
     state = AgentState(
         agent_id=agent_id,
+        data_client=data_client,
         peer_url=peer_url
     )
     state.load_data_and_model(
