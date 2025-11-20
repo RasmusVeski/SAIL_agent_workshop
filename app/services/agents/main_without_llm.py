@@ -12,6 +12,7 @@ from uuid import uuid4
 import functools
 import sys
 from dotenv import load_dotenv
+import subprocess
 
 
 # --- A2A Framework Imports ---
@@ -41,7 +42,6 @@ from a2a.types import (
     Task
 )
 from a2a.utils import new_agent_text_message
-
 
 # --- Utility Imports ---
 # Add the 'services' directory to the Python path to allow imports like 'utils.model'
@@ -369,6 +369,39 @@ def run_initiator_in_thread(state: AgentState, partner_url: str):
 
 
 
+def auto_tune_mtu():
+    """
+    Detects the default network interface inside Docker and reduces its MTU to 1000.
+    This ensures packets fit through Tailscale/VPN tunnels without fragmentation.
+    Requires the container to be run with --privileged.
+    """
+    try:
+        # 1. Find the default interface (e.g., eth0)
+        # Command: ip -4 route show default
+        result = subprocess.run(["ip", "-4", "route", "show", "default"], capture_output=True, text=True)
+        output = result.stdout.strip()
+        
+        interface = None
+        # Parse output like: "default via 172.17.0.1 dev eth0 proto dhcp..."
+        parts = output.split()
+        if "dev" in parts:
+            idx = parts.index("dev") + 1
+            if idx < len(parts):
+                interface = parts[idx]
+        
+        if interface:
+            logging.info(f"🔧 Found default interface: '{interface}'. Setting MTU to 1000...")
+            # 2. Set MTU
+            subprocess.run(["ip", "link", "set", "dev", interface, "mtu", "1000"], check=True)
+            logging.info(f"✅ Successfully set MTU to 1000 on {interface}")
+        else:
+            logging.warning("⚠️ Could not detect default interface. MTU tuning skipped.")
+
+    except PermissionError:
+        logging.warning("⚠️ Failed to set MTU: Permission Denied. (Did you run with --privileged?)")
+    except Exception as e:
+        logging.warning(f"⚠️ Failed to set MTU: {e}")
+
 # --- 5. Server Startup & Main ---
 
 async def on_startup():
@@ -377,6 +410,8 @@ async def on_startup():
     """
     log_file = f"agent_{AGENT_ID.lower()}.log"
     setup_logging(log_dir="logs", log_file=log_file)
+
+    auto_tune_mtu()
     
     state_singleton.agent_id = AGENT_ID
     logging.info(f"--- {state_singleton.agent_id} | STARTING UP on port {PORT} ---")
