@@ -64,11 +64,10 @@ from utils.a2a_helpers import (
     send_and_parse_a2a_message
 )
 
-# WeightExchangePayload fields
+# WeightExchangePayload fields example
     #agent_id=self.state.agent_id,
     #payload_b64=my_payload_b64
-
-
+    #message="Hello"
 
 load_dotenv()
 
@@ -189,6 +188,7 @@ class FederatedAgentExecutor(AgentExecutor):
             request_data, initiator_payload = parse_incoming_request(
                 context, self.state.global_model
             )
+            logging.info(f"Message from {request_data.agent_id}: {request_data.message}")
         except Exception as e:
             logging.error(f"Payload deserialization failed: {e}")
             await event_queue.enqueue_event(
@@ -225,7 +225,8 @@ class FederatedAgentExecutor(AgentExecutor):
         # 4. Send our payload back as the response
         response_payload = WeightExchangePayload(
             agent_id=self.state.agent_id,
-            payload_b64=my_payload_b64
+            payload_b64=my_payload_b64,
+            message="Here is my updated model!"
         )
         
         
@@ -322,7 +323,8 @@ async def initiator_loop(state: AgentState, partner_url: str):
             my_payload_b64 = await asyncio.to_thread(serialize_payload_to_b64, my_payload)
             request_payload_obj = WeightExchangePayload(
                 agent_id=state.agent_id,
-                payload_b64=my_payload_b64
+                payload_b64=my_payload_b64,
+                message=f"Starting round {state.round_num}"
             )
 
             # 2c.
@@ -332,7 +334,7 @@ async def initiator_loop(state: AgentState, partner_url: str):
                 response_data, responder_payload = await send_and_parse_a2a_message(
                     client, request_payload_obj, state.global_model
                 )
-                
+                logging.info(f"Message from {response_data.agent_id}: {response_data.message}")
                 # 4. Merge
                 await thread_safe_merge_and_evaluate(
                     state=state,

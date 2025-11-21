@@ -22,6 +22,7 @@ from .payload_utils import deserialize_payload_from_b64
 class WeightExchangePayload(BaseModel):
     agent_id: str
     payload_b64: str
+    message: str
 
 
 # --- Helper 1: Parse Incoming Requests ---
