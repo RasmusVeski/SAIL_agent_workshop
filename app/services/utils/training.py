@@ -39,7 +39,7 @@ def evaluate(model, val_loader, device, criterion):
 
 def train(model, train_loader, val_loader, epochs, learning_rate, device, 
           val_frequency=1, weight_decay=0.0, lr_scheduler_step_size=7,
-          global_model=None, mu=0.0):
+          global_model=None, mu=0.0, log_prefix=""):
     """
     A standalone training function for an agent's model.
     Now includes weight_decay, a scheduler, and returns a metrics history.
@@ -63,7 +63,7 @@ def train(model, train_loader, val_loader, epochs, learning_rate, device,
     - history (list): A list of dictionaries containing metrics for each validation step.
     """
     
-    torch.set_num_threads(2) #Fix cpu usage so network doesn't die
+    #torch.set_num_threads(4) #Fix cpu usage so network doesn't die
 
     history = []
     criterion = nn.CrossEntropyLoss()
@@ -82,10 +82,10 @@ def train(model, train_loader, val_loader, epochs, learning_rate, device,
     
     # --- 1. Pre-training Evaluation ---
     if val_loader:
-        logging.info("Performing pre-training evaluation...")
+        logging.info(log_prefix + "Performing pre-training evaluation...")
         avg_val_loss, accuracy, correct, total = evaluate(model, val_loader, device, criterion)
-        logging.info(f"--- PRE-TRAINING VALIDATION ---")
-        logging.info(f"Validation Loss: {avg_val_loss:.4f} | "
+        logging.info(log_prefix + f"--- PRE-TRAINING VALIDATION ---")
+        logging.info(log_prefix + f"Validation Loss: {avg_val_loss:.4f} | "
                      f"Validation Acc: {accuracy:.2f}% ({correct}/{total})")
         history.append({
             'epoch': 0,
@@ -94,10 +94,10 @@ def train(model, train_loader, val_loader, epochs, learning_rate, device,
             'val_acc': accuracy
         })
     
-    logging.info(f"Starting training on {device} for {epochs} epochs...")
+    logging.info(log_prefix + f"Starting training on {device} for {epochs} epochs...")
 
     if mu > 0 and global_model is not None:
-        logging.info(f"--- FedProx Training Enabled (mu={mu}) ---")
+        logging.info(log_prefix + f"--- FedProx Training Enabled (mu={mu}) ---")
         # Ensure global model is on the same device
         global_model.to(device)
     
@@ -112,7 +112,7 @@ def train(model, train_loader, val_loader, epochs, learning_rate, device,
         
         for i, (data, labels) in enumerate(train_loader_tqdm):
             if -1 in labels:
-                logging.warning("Skipping bad batch")
+                logging.warning(log_prefix + "Skipping bad batch")
                 continue
                 
             data, labels = data.to(device), labels.to(device)
@@ -145,21 +145,23 @@ def train(model, train_loader, val_loader, epochs, learning_rate, device,
             if i % 10 == 9: 
                 avg_loss = running_loss / 10
                 train_loader_tqdm.set_postfix(loss=f"{avg_loss:.3f}")
-                logging.debug(f"Epoch {epoch+1}, Batch {i+1}, Avg. Loss: {avg_loss:.3f}")
+                logging.debug(log_prefix + f"Epoch {epoch+1}, Batch {i+1}, Avg. Loss: {avg_loss:.3f}")
                 running_loss = 0.0
         
         # Step the learning rate scheduler
         scheduler.step()
 
         avg_epoch_train_loss = epoch_train_loss / train_batches if train_batches > 0 else 0.0
-        logging.info(f"Epoch {epoch+1}/{epochs} training complete. Avg Train Loss: {avg_epoch_train_loss:.4f}")
+        logging.info(log_prefix + log_prefix + f"Epoch {epoch+1}/{epochs} training complete. Avg Train Loss: {avg_epoch_train_loss:.4f}")
 
         # --- 3. Validation Phase ---
+
+        val_loss, val_acc = None, None
         if val_loader and (epoch + 1) % val_frequency == 0:
             avg_val_loss, accuracy, correct, total = evaluate(model, val_loader, device, criterion)
             
-            logging.info(f"--- Epoch {epoch+1}/{epochs} VALIDATION ---")
-            logging.info(f"Validation Loss: {avg_val_loss:.4f} | "
+            logging.info(log_prefix + f"--- Epoch {epoch+1}/{epochs} VALIDATION ---")
+            logging.info(log_prefix + f"Validation Loss: {avg_val_loss:.4f} | "
                          f"Validation Acc: {accuracy:.2f}% ({correct}/{total})")
             history.append({
                 'epoch': epoch + 1,
@@ -168,11 +170,19 @@ def train(model, train_loader, val_loader, epochs, learning_rate, device,
                 'val_acc': accuracy
             })
         
-        elif val_loader and (epoch + 1) % val_frequency != 0:
-             logging.info(f"Epoch {epoch+1}/{epochs} training complete (validation skipped).")
-        
-        elif not val_loader:
-             logging.info(f"Epoch {epoch+1}/{epochs} training complete (no validation).")
+        elif val_loader:
+            logging.info(log_prefix + f"Epoch {epoch+1}/{epochs} training complete (validation skipped).")
 
-    logging.info("Finished Training")
+        else:
+            logging.info(log_prefix + f"Epoch {epoch+1}/{epochs} training complete (no validation).")
+
+        # Always push training metrics to history, even without validation
+        history.append({
+            'epoch': epoch + 1,
+            'train_loss': avg_epoch_train_loss,
+            'val_loss': val_loss,
+            'val_acc': val_acc
+        })
+
+    logging.info(log_prefix + "Finished Training")
     return model, history

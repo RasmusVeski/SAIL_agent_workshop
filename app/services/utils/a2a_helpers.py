@@ -50,7 +50,7 @@ def parse_incoming_request(context: RequestContext, reference_model: nn.Module) 
     if not payload_state_dict:
         raise ValueError("Received corrupt or invalid payload")
         
-    logging.info(f"Received valid payload from {request_data.agent_id}")
+    logging.info(f"RESPONDER: Received valid payload from {request_data.agent_id}")
     return request_data, payload_state_dict
 
 
@@ -68,7 +68,7 @@ async def send_a2a_response(event_queue: EventQueue, response_payload: WeightExc
             messageId=uuid4().hex
         )
         await event_queue.enqueue_event(response_message)
-        logging.info(f"Sent responder payload for agent {response_payload.agent_id}.")
+        logging.info(f"RESPONDER: Sent responder payload for agent {response_payload.agent_id}.")
     except Exception as e:
         # Re-raise to be caught by the executor
         raise ValueError(f"Failed to build or enqueue response message: {e}")
@@ -83,7 +83,7 @@ async def send_and_parse_a2a_message(client: A2AClient,
     the deserialized WeightExchangePayload and model state_dict.
     Raises exceptions on failure.
     """
-    logging.info(f"Sending initiator payload from {request_payload.agent_id}...")
+    logging.info(f"INITIATOR: Sending initiator payload from {request_payload.agent_id}...")
     
     # 1. Build request
     message_part_data = {
@@ -135,5 +135,5 @@ async def send_and_parse_a2a_message(client: A2AClient,
     if not responder_state_dict:
         raise ValueError("Received corrupt payload from responder")
         
-    logging.info(f"Received valid payload from {response_data.agent_id}")
+    logging.info(f"INITIATOR: Received valid payload from {response_data.agent_id}")
     return response_data, responder_state_dict
