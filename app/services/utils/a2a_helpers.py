@@ -21,7 +21,7 @@ from .payload_utils import deserialize_payload_from_b64
 # We define this here so both main.py and the helpers can import it
 class WeightExchangePayload(BaseModel):
     agent_id: str
-    payload_b64: str
+    payload_b64: str = ""
     message: str
 
 
@@ -42,15 +42,16 @@ def parse_incoming_request(context: RequestContext, reference_model: nn.Module) 
     # 1. Deserialize the Pydantic model
     request_data = WeightExchangePayload(**part_root.data)
     
-    # 2. Deserialize the b64 payload string into a state_dict
-    payload_state_dict = deserialize_payload_from_b64(
-        request_data.payload_b64, reference_model
-    )
-    
-    if not payload_state_dict:
-        raise ValueError("Received corrupt or invalid payload")
-        
-    logging.info(f"RESPONDER: Received valid payload from {request_data.agent_id}")
+    # 2. Check if there is a payload to deserialize
+    payload_state_dict = None
+    if request_data.payload_b64:
+        payload_state_dict = deserialize_payload_from_b64(
+            request_data.payload_b64, reference_model
+        )
+        if not payload_state_dict:
+            logging.warning(f"RESPONDER: Warning - Payload present but failed to deserialize from {request_data.agent_id}")
+    else:
+        logging.info(f"RESPONDER: Received text-only message from {request_data.agent_id}: {request_data.message}")
     return request_data, payload_state_dict
 
 
@@ -129,11 +130,24 @@ async def send_and_parse_a2a_message(client: A2AClient,
     # 4. Deserialize the Pydantic model and the b64 payload
     response_data = WeightExchangePayload(**part_root.data)
     
-    responder_state_dict = deserialize_payload_from_b64(
-        response_data.payload_b64, reference_model
-    )
-    if not responder_state_dict:
-        raise ValueError("Received corrupt payload from responder")
-        
-    logging.info(f"INITIATOR: Received valid payload from {response_data.agent_id}")
+    # Case A: The Partner is BUSY
+    if response_data.message == "BUSY":
+        logging.info(f"INITIATOR: Partner {response_data.agent_id} signaled BUSY.")
+        return response_data, None
+
+    # Case B: The Partner sent weights
+    responder_state_dict = None
+    if response_data.payload_b64:
+        responder_state_dict = deserialize_payload_from_b64(
+            response_data.payload_b64, reference_model
+        )
+        if not responder_state_dict:
+             # Only raise error if payload WAS provided but failed
+            raise ValueError("Received corrupt payload from responder")
+            
+        logging.info(f"INITIATOR: Received valid weights from {response_data.agent_id}")
+    else:
+        # Case C: Text-only response (e.g., just a chat message)
+        logging.info(f"INITIATOR: Received text-only response from {response_data.agent_id}")
+
     return response_data, responder_state_dict

@@ -107,12 +107,12 @@ def merge_with_partner(partner_id: str, merge_alpha: float = 0.5):
         return "Error: No incoming payload found from partner."
     
     # 1. Get Weights (Lazy Load - allows merging without training first)
-    local_weights = _get_or_create_working_copy()
+    working_weights = _get_or_create_working_copy()
     partner_weights = state_singleton.responder_incoming_payload
 
     # 2. Merge Local Draft vs Partner
     # This updates the draft to be the consensus of the two agents
-    merged_weights = merge_payloads(local_weights, partner_weights, alpha=0.5)
+    merged_weights = merge_payloads(working_weights, partner_weights, alpha=0.5)
 
     # 3. Update Workspace
     _update_working_copy(merged_weights)

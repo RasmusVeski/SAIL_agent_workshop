@@ -28,6 +28,8 @@ from utils.a2a_helpers import WeightExchangePayload
 
 load_dotenv()
 
+torch.set_num_threads(4) #Limit pytorch to 4 threads to have http hold uvicorn room
+
 # --- Configuration ---
 AGENT_ID = os.getenv("AGENT_ID")
 PORT = int(os.getenv("PORT", "9000"))

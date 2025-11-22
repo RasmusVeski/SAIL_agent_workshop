@@ -29,6 +29,7 @@ async def initiator_loop(state: AgentState, partner_urls: list):
             state.shared_httpx_client = httpx_client
 
             state.active_client = None
+            state.current_partner_id = None
             
             inputs = {"messages": [HumanMessage(content="Wake up. Evaluate status and execute a round.")]}
             
@@ -40,7 +41,7 @@ async def initiator_loop(state: AgentState, partner_urls: list):
                 logging.error(f"INITIATOR: Graph execution failed: {e}", exc_info=True)
             
             # Cleanup Scratchpads
-            state.initiator_local_weights = None
+            state.initiator_working_weights = None
             state.initiator_incoming_payload = None
             
             # Wait before next wake up

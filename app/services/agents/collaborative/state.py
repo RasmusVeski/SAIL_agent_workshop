@@ -45,16 +45,18 @@ class AgentState:
 
         # --- Thread-Specific Scratchpads ---
         # Responder Scratchpad
-        self.responder_local_weights = None
+        self.responder_working_weights = None
         self.responder_incoming_payload = None # Responder's incoming data
 
         # Initiator Scratchpad
-        self.initiator_local_weights = None
+        self.initiator_working_weights = None
         self.initiator_incoming_payload = None
         self.active_client = None # The A2AClient object for the Initiator thread to use
+        self.current_partner_id = None
 
         # --- Lock ---
         self.model_lock = threading.Lock()
+        self.responder_lock = asyncio.Lock()
 
 
     def log_history(self, entry: dict):
@@ -84,20 +86,23 @@ class AgentState:
 # The Global Singleton
 state_singleton = AgentState()
 
-# --- Shared Logic (Used by both Initiator and Responder) ---
-
-def _blocking_commit_logic(state: AgentState, draft_payload: dict):
+def _blocking_commit_logic(state: AgentState, draft_payload: dict, alpha: float = 0.2):
     """
-    Commits the 'Draft' (working weights) to the Global Model using a weighted merge.
-    This corresponds to the 'Safety Anchor' logic.
+    Commits the 'Draft' (working weights) to the Global Model.
+    
+    Args:
+        alpha: The weight of the CURRENT Global Model in the merge.
+               0.0 = Completely Overwrite Global (Commit without merging).
+               0.2 = Keep 20% Old, 80% New.
+               0.5 = Balanced Merge.
     """
     with state.model_lock:
         # 1. Get Current Global
         current_global_payload = get_trainable_state_dict(state.global_model)
         
         # 2. Merge Global (Anchor) with Draft (New Knowledge)
-        # Alpha 0.2 = Keep 20% Old Global, Adopt 80% New Draft
-        final_merge = merge_payloads(current_global_payload, draft_payload, alpha=0.3)
+        # merge_payloads(A, B, alpha) -> alpha*A + (1-alpha)*B
+        final_merge = merge_payloads(current_global_payload, draft_payload, alpha=alpha)
 
         # 3. Update
         update_global_model(state.global_model, final_merge)

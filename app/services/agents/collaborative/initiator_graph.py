@@ -35,17 +35,17 @@ class GraphState(TypedDict):
 # --- 2. Helper: Workspace Management ---
 def _get_or_create_working_copy():
     """
-    Ensures 'initiator_local_weights' exists.
+    Ensures 'initiator_working_weights' exists.
     If not, creates it from the current global model.
     """
-    if state_singleton.initiator_local_weights is None:
+    if state_singleton.initiator_working_weights is None:
         logging.info("INITIATOR: Creating new working copy from Global Model.")
         with state_singleton.model_lock:
-            state_singleton.initiator_local_weights = get_trainable_state_dict(state_singleton.global_model)
-    return state_singleton.initiator_local_weights
+            state_singleton.initiator_working_weights = get_trainable_state_dict(state_singleton.global_model)
+    return state_singleton.initiator_working_weights
 
 def _update_working_copy(new_weights: dict):
-    state_singleton.initiator_local_weights = new_weights
+    state_singleton.initiator_working_weights = new_weights
 
 # --- 3. The Tools ---
 
@@ -71,6 +71,7 @@ async def select_partner_agent():
     # Reset previous exchange state
     state_singleton.initiator_incoming_payload = None
     state_singleton.active_client = None
+    state_singleton.current_partner_id = None # Clear old ID
     
     # Establish Connection
     resolver = A2ACardResolver(state_singleton.shared_httpx_client, base_url=target_url)
@@ -81,6 +82,7 @@ async def select_partner_agent():
         client = await ClientFactory.connect(agent=card, client_config=config)
         
         state_singleton.active_client = client
+        state_singleton.current_partner_id = card.name
         return f"Successfully connected to partner: {card.name} at {target_url}. Previous incoming weights cleared."
         
     except Exception as e:
@@ -97,20 +99,16 @@ def train_local_model():
     # 1. Get Weights (Lazy Load)
     weights_to_train = _get_or_create_working_copy()
     
-    # 2. Load into temp model
-    def _load_temp_model():
-        with state_singleton.model_lock:
-            temp_model = copy.deepcopy(state_singleton.global_model)
-        curr_state = temp_model.state_dict()
-        curr_state.update(weights_to_train)
-        temp_model.load_state_dict(curr_state)
-        return temp_model
-
-    model_instance = _load_temp_model()
+    # 2. Load Temp Model
+    with state_singleton.model_lock:
+        # Deepcopying the model structure is fast, but copying weights can be slow.
+        # We do this to ensure we don't mutate the live global model during training
+        model_instance = copy.deepcopy(state_singleton.global_model)
     
-    # 3. Train
-    import torch
-    torch.set_num_threads(2)
+    curr_state = model_instance.state_dict()
+    # Only update keys that exist in weights_to_train
+    curr_state.update(weights_to_train)
+    model_instance.load_state_dict(curr_state)
     
     trained_model, history = train(
         model=model_instance,
@@ -158,6 +156,17 @@ async def exchange_weights_with_partner(message_to_partner: str = "Starting exch
         response_data, responder_payload = await send_and_parse_a2a_message(
             client, request_payload_obj, state_singleton.global_model
         )
+
+        # Check 1: Is the partner busy?
+        if response_data.message == "BUSY":
+            state_singleton.initiator_incoming_payload = None # Clear old data
+            logging.info(f"INITIATOR: Partner {response_data.agent_id} is BUSY.")
+            return f"Exchange Failed: Partner {response_data.agent_id} is currently BUSY. Please wait or select a different partner."
+
+        # Check 2: Did they just send a chat message without weights?
+        if responder_payload is None:
+            state_singleton.initiator_incoming_payload = None
+            return f"Partner replied, but sent no weights. Message: '{response_data.message}'"
         
         # 4. Stash result
         state_singleton.initiator_incoming_payload = responder_payload
@@ -169,47 +178,81 @@ async def exchange_weights_with_partner(message_to_partner: str = "Starting exch
         return f"Error during exchange: {e}"
 
 @tool
-def merge_with_incoming():
+def merge_with_incoming(merge_alpha: float = 0.5):
     """
     Merges the Partner's incoming weights into your Local Draft.
-    Does NOT update the Global Model yet.
+    
+    Args:
+        merge_alpha (float): Weight of YOUR local draft vs the partner's.
+                             0.5 = Balanced merge.
+                             0.8 = Keep 80% yours, 20% theirs.
+                             0.2 = Keep 20% yours, 80% theirs.
     """
-    logging.info("INITIATOR: [Tool] Merging incoming weights...")
+    logging.info(f"INITIATOR: [Tool] Merging incoming weights (alpha={merge_alpha})...")
     
     if not state_singleton.initiator_incoming_payload:
-        return "Error: No incoming payload found. Run `exchange_weights_with_partner` first."
+        return "Error: No incoming weights found. The last exchange might have failed or the partner was BUSY. Cannot merge."
 
     # 1. Get Weights
-    local_weights = _get_or_create_working_copy()
+    working_weights = _get_or_create_working_copy()
     partner_weights = state_singleton.initiator_incoming_payload
 
     # 2. Merge (50/50)
-    merged_weights = merge_payloads(local_weights, partner_weights, alpha=0.5)
+    merged_weights = merge_payloads(working_weights, partner_weights, alpha=merge_alpha)
     
     # 3. Update Workspace
     _update_working_copy(merged_weights)
+
+    with state_singleton.model_lock:
+        temp_model = copy.deepcopy(state_singleton.global_model)
+        
+    curr_state = temp_model.state_dict()
+    curr_state.update(merged_weights)
+    temp_model.load_state_dict(curr_state)
     
-    return "Merge complete. Local draft now contains combined weights. Ready to evaluate or commit."
+    val_loss, val_acc, correct, total = evaluate(
+        temp_model,
+        state_singleton.val_loader,
+        state_singleton.device,
+        state_singleton.criterion
+    )
+
+    partner_id = state_singleton.current_partner_id or "Unknown"
+    history_entry = {
+        "round": state_singleton.round_num,
+        "role": "INITIATOR",
+        "partner": partner_id,
+        "action": f"Merged (alpha={merge_alpha})",
+        "result": f"Acc: {val_acc:.2f}%"
+    }
+    
+    state_singleton.log_history(history_entry)
+    
+    return f"Merge complete. Alpha: {merge_alpha}. Resulting Accuracy: {val_acc:.2f}%. History updated."
 
 
 @tool
-def commit_to_global_model():
+def commit_to_global_model(alpha: float = 0.2):
     """
     Commits the Local Draft to the Global Model.
-    This is the FINAL step. It mixes the draft with the current Global Model (Safety Anchor) and saves it.
+    
+    Args:
+        alpha (float): How much of the OLD Global Model to keep.
+                       0.2 = Keep 20% Old, 80% New (Safe/Fast).
+                       0.5 = Keep 50% Old (Very Safe/Slow).
+                       0.0 = OVERWRITE Global with Draft (Commit without merging).
     """
-    logging.info("INITIATOR: [Tool] Committing to Global...")
+    logging.info(f"INITIATOR: [Tool] Committing to Global (alpha={alpha})...")
 
     if state_singleton.initiator_working_weights is None:
         return "Error: No Local Draft exists. Train or Merge first."
 
-    # 1. Blocking Commit (Thread Safe)
     new_round, model_for_eval = _blocking_commit_logic(
         state_singleton,
-        state_singleton.initiator_working_weights
+        state_singleton.initiator_working_weights,
+        alpha=alpha
     )
     
-    # 2. Quick Eval
     val_loss, val_acc, correct, total = evaluate(
         model_for_eval,
         state_singleton.val_loader,
@@ -218,17 +261,13 @@ def commit_to_global_model():
     )
     result_str = f"Acc: {val_acc:.2f}%"
 
-    # 3. Log History
-    partner_name = "Unknown"
-    # Try to find partner name from active client if it exists
-    if state_singleton.active_client:
-        partner_name = "Partner" # A2AClient structure makes getting name tricky here without keeping ref
+    partner_name = state_singleton.current_partner_id or "Unknown"
         
     history_entry = {
         "round": new_round,
         "role": "INITIATOR",
         "partner": partner_name, 
-        "action": "Committed Update",
+        "action": f"Committed (alpha={alpha})",
         "result": result_str
     }
     state_singleton.log_history(history_entry)
