@@ -21,20 +21,20 @@ async def get_partner_client(httpx_client: httpx.AsyncClient, partner_url: str) 
     resolver = A2ACardResolver(httpx_client=httpx_client, base_url=partner_url)
     for attempt in range(5):
         try:
-            logging.info(f"Attempting to resolve partner card at {partner_url}...")
+            logging.info(f"INITIATOR: Attempting to resolve partner card at {partner_url}...")
             partner_card = await resolver.get_agent_card()
-            logging.info(f"Successfully resolved partner: {partner_card.name}")
+            logging.info(f"INITIATOR: Successfully resolved partner: {partner_card.name}")
             config = ClientConfig(httpx_client=httpx_client)
             return await ClientFactory.connect(agent=partner_card, client_config=config)
         except Exception as e:
-            logging.warning(f"Failed to resolve partner card (attempt {attempt+1}/5): {e}")
+            logging.warning(f"INITIATOR: Failed to resolve partner card (attempt {attempt+1}/5): {e}")
             await asyncio.sleep(10)
-    logging.error("Could not resolve partner agent card. Initiator loop will not run.")
+    logging.error("INITIATOR: Could not resolve partner agent card. Initiator loop will not run.")
     return None
 
 async def initiator_loop(state: AgentState, partner_url: str):
-    logging.info(f"--- {state.agent_id} | INITIATOR ---")
-    logging.info(f"Starting initiator loop. Will federate with {partner_url}")
+    logging.info(f"INITIATOR: --- {state.agent_id} | INITIATOR ---")
+    logging.info(f"INITIATOR: Starting initiator loop. Will federate with {partner_url}")
     
     # Use explicit timeouts: 10m total, 1m connect
     timeouts = httpx.Timeout(600.0, connect=60.0)
@@ -45,13 +45,13 @@ async def initiator_loop(state: AgentState, partner_url: str):
             return 
 
         for round_num in range(NUM_ROUNDS):
-            logging.info(f"\n--- {state.agent_id} | Initiator Round {state.round_num}/{NUM_ROUNDS} ---")
+            logging.info(f"INITIATOR: \n--- {state.agent_id} | Initiator Round {state.round_num}/{NUM_ROUNDS} ---")
         
             def _safe_copy_model(state):
                 with state.model_lock:
                     return copy.deepcopy(state.global_model)
             
-            logging.info("Training local model (as initiator)...")
+            logging.info("INITIATOR: Training local model (as initiator)...")
             current_global_model = await asyncio.to_thread(_safe_copy_model, state)
             
             # Give network a tiny breath
@@ -75,12 +75,12 @@ async def initiator_loop(state: AgentState, partner_url: str):
                 message=f"Starting round {state.round_num}"
             )
 
-            logging.info("Sending initiator payload to partner...")
+            logging.info("INITIATOR: Sending initiator payload to partner...")
             try:
                 response_data, responder_payload = await send_and_parse_a2a_message(
                     client, request_payload_obj, state.global_model
                 )
-                logging.info(f"Message from {response_data.agent_id}: {response_data.message}")
+                logging.info(f"INITIATOR: Message from {response_data.agent_id}: {response_data.message}")
                 
                 await thread_safe_merge_and_evaluate(
                     state=state,
@@ -101,9 +101,9 @@ async def initiator_loop(state: AgentState, partner_url: str):
     logging.info(f"--- {state.agent_id} | INITIATOR FINISHED ---")
 
 def run_initiator_in_thread(state: AgentState, partner_url: str):
-    logging.info("Starting initiator thread...")
+    logging.info("INITIATOR: Starting initiator thread...")
     time.sleep(10) #Give server time to start
     try:
         asyncio.run(initiator_loop(state, partner_url))
     except Exception as e:
-        logging.error(f"Initiator loop crashed: {e}", exc_info=True)
+        logging.error(f"INITIATOR: Initiator loop crashed: {e}", exc_info=True)

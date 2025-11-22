@@ -35,16 +35,16 @@ class FederatedAgentExecutor(AgentExecutor):
     ) -> None:
 
         logging.info(f"--- {self.state.agent_id} | RESPONDER ---")
-        logging.info("Received federated_weight_exchange request.")
+        logging.info("RESPONDER: Received federated_weight_exchange request.")
         
         # 1. Deserialize initiator's payload
         try:
             request_data, initiator_payload = parse_incoming_request(
                 context, self.state.global_model
             )
-            logging.info(f"Message from {request_data.agent_id}: {request_data.message}")
+            logging.info(f"RESPONDER: Message from {request_data.agent_id}: {request_data.message}")
         except Exception as e:
-            logging.error(f"Payload deserialization failed: {e}")
+            logging.error(f"RESPONDER: Payload deserialization failed: {e}")
             await event_queue.enqueue_event(
                 new_agent_text_message(f"Error: Corrupt payload: {e}")
             )
@@ -55,10 +55,10 @@ class FederatedAgentExecutor(AgentExecutor):
                 return copy.deepcopy(state.global_model)
         
         # 2. Train (Async/Threaded)
-        logging.info("Copying global model for responder training...")
+        logging.info("RESPONDER: Copying global model for responder training...")
         local_model_to_train = await asyncio.to_thread(_safe_copy_model, self.state)
 
-        logging.info("Training local model (as responder)...")
+        logging.info("RESPONDER: Training local model (as responder)...")
         local_model, _ = await asyncio.to_thread(
             train,
             model=local_model_to_train,
@@ -83,7 +83,7 @@ class FederatedAgentExecutor(AgentExecutor):
         try:
             await send_a2a_response(event_queue, response_payload)
         except Exception as e:
-            logging.error(f"Failed to send response: {e}")
+            logging.error(f"RESPONDER: Failed to send response: {e}")
             await event_queue.enqueue_event(
                 new_agent_text_message(f"Error: Failed to build response: {e}")
             )
@@ -100,5 +100,5 @@ class FederatedAgentExecutor(AgentExecutor):
     async def cancel(
         self, context: RequestContext, event_queue: EventQueue
     ) -> None:
-        logging.warning("Cancel not supported")
+        logging.warning("RESPONDER: Cancel not supported")
         await event_queue.enqueue_event(new_agent_text_message("Error: Cancel not supported"))

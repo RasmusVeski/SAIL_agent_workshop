@@ -58,28 +58,9 @@ def _blocking_merge_logic(state: AgentState, payload_1: dict, payload_2: dict):
         model_to_eval = copy.deepcopy(state.global_model)
         
     return new_round_num, model_to_eval
-        
 
 async def thread_safe_merge_and_evaluate(state: AgentState, payload_1: dict, payload_2: dict, role: str):
-    logging.info(f"Merging payloads... (as {role})")
-    
-    # 1. Run the LOCKING logic in a separate thread
-    new_round_num, model_to_eval = await asyncio.to_thread(
-        _blocking_merge_logic, state, payload_1, payload_2
-    )
-
-    # 2. Evaluate (also in a thread)
-    val_loss, val_acc, correct, total = await asyncio.to_thread(
-        evaluate,
-        model_to_eval, 
-        state.val_loader, 
-        state.device, 
-        state.criterion
-    )
-    logging.info(f"Round {new_round_num} ({role}) Merged Accuracy: {val_acc:.2f}% ({correct}/{total})")
-
-async def thread_safe_merge_and_evaluate(state: AgentState, payload_1: dict, payload_2: dict, role: str):
-    logging.info(f"Merging payloads... (as {role})")
+    logging.info(f"{role}: Merging payloads...")
     
     # 1. Run the LOCKING logic in a separate thread
     # This prevents the Main Loop from freezing while waiting for the lock
@@ -95,4 +76,4 @@ async def thread_safe_merge_and_evaluate(state: AgentState, payload_1: dict, pay
         state.device, 
         state.criterion
     )
-    logging.info(f"Round {new_round_num} ({role}) Merged Accuracy: {val_acc:.2f}% ({correct}/{total})")
+    logging.info(f"{role}: Round {new_round_num} ({role}) Merged Accuracy: {val_acc:.2f}% ({correct}/{total})")
