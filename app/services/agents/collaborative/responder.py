@@ -44,7 +44,7 @@ class CollaborativeResponderExecutor(AgentExecutor):
             )
             logging.info(f"RESPONDER: Message from {request_data.agent_id}: {request_data.message}")
 
-            self.state.incoming_payload = initiator_payload
+            self.state.responder_incoming_payload = initiator_payload
         except Exception as e:
             logging.error(f"RESPONDER: Payload deserialization failed: {e}")
             await event_queue.enqueue_event(
@@ -53,7 +53,10 @@ class CollaborativeResponderExecutor(AgentExecutor):
             return
         
         initial_msg = f"Partner {request_data.agent_id} sent weights. Message: {request_data.message}"
-        inputs = {"messages": [HumanMessage(content=initial_msg)]}
+        inputs = {
+            "messages": [HumanMessage(content=initial_msg)],
+            "partner_id": request_data.agent_id 
+        }
 
         try:
             logging.info("RESPONDER: Invoking Agent Brain...")
@@ -72,16 +75,13 @@ class CollaborativeResponderExecutor(AgentExecutor):
                 response_msg = str(last_msg.content)
                 logging.info(f"RESPONDER: Agent chose to say: '{response_msg}'")
 
-        if hasattr(self.state, 'latest_local_weights'):
-             logging.info("RESPONDER: Found new trained weights from Agent.")
-             weights_to_send = self.state.responder_local_weights
-             if response_msg == "Ready for next round!": # Fallback when no AIMessage
-                 response_msg = "Model trained and merged."
-             # Clean up so next round starts fresh
-             del self.state.responder_local_weights 
+        if state_singleton.responder_working_weights is not None:
+             logging.info("RESPONDER: Found draft (newest) weights from Agent.")
+             weights_to_send = state_singleton.responder_working_weights
+             state_singleton.responder_working_weights = None
         else:
             # FALLBACK: Send current global weights
-            logging.warning("RESPONDER: Agent did not produce new weights. Sending current global weights.")
+            logging.warning("RESPONDER: Agent did not produce a draft. Sending current global weights.")
             
             # Safe fetch of current weights
             def _get_safe_current_weights():

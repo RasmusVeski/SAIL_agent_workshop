@@ -34,11 +34,27 @@ class AgentState:
         self.criterion = None
         self.round_num = 0
         self.agent_hps = AGENT_HPS
-        self.model_lock = threading.Lock()
+
+        # --- Network State ---
+        self.available_partners = [] # List of URLs strings
+        self.shared_httpx_client = None # Assigned by initiator loop
 
         # --- Shared Episodic Memory ---
         # Stores dicts: {'round': 1, 'role': 'RESPONDER', 'partner': 'Agent_B', 'result': 'Acc: 10%', 'action': 'Merged'}
         self.history = []
+
+        # --- Thread-Specific Scratchpads ---
+        # Responder Scratchpad
+        self.responder_local_weights = None
+        self.responder_incoming_payload = None # Responder's incoming data
+
+        # Initiator Scratchpad
+        self.initiator_local_weights = None
+        self.initiator_incoming_payload = None
+        self.active_client = None # The A2AClient object for the Initiator thread to use
+
+        # --- Lock ---
+        self.model_lock = threading.Lock()
 
 
     def log_history(self, entry: dict):
@@ -70,52 +86,58 @@ state_singleton = AgentState()
 
 # --- Shared Logic (Used by both Initiator and Responder) ---
 
-def _blocking_merge_logic(state: AgentState, payload_1: dict, payload_2: dict):
+def _blocking_commit_logic(state: AgentState, draft_payload: dict):
     """
-    Synchronous function that holds the lock and updates the model.
-    Safe to run in a thread.
+    Commits the 'Draft' (working weights) to the Global Model using a weighted merge.
+    This corresponds to the 'Safety Anchor' logic.
     """
     with state.model_lock:
-        # 1. Merge the two NEW payloads (The consensus of this specific round)
-        # We weight them 50/50 between the two partners
-        exchange_merge = merge_payloads(payload_1, payload_2, alpha=0.5)
-        
-        # 2. Get the CURRENT global model state
+        # 1. Get Current Global
         current_global_payload = get_trainable_state_dict(state.global_model)
-
-        # 3. Merge the Exchange Result with the Current Global Model
-        # 20% Current Global (Anchor) + 80% New Exchange (Progress)
-        # This is for not completely overwriting results from the other thread, but only take 20%
-        final_merge = merge_payloads(current_global_payload, exchange_merge, alpha=0.2)
-
-        # 4. Update global model
-        update_global_model(state.global_model, final_merge)
         
-        # 5. Increment round
+        # 2. Merge Global (Anchor) with Draft (New Knowledge)
+        # Alpha 0.2 = Keep 20% Old Global, Adopt 80% New Draft
+        final_merge = merge_payloads(current_global_payload, draft_payload, alpha=0.3)
+
+        # 3. Update
+        update_global_model(state.global_model, final_merge)
         state.round_num += 1 
         new_round_num = state.round_num
         
-        # 6. Deepcopy for eval (so we can evaluate without holding the lock)
+        # 4. Copy for eval
         model_to_eval = copy.deepcopy(state.global_model)
         
     return new_round_num, model_to_eval
+
+
+
+
+# def _blocking_merge_logic(state: AgentState, payload_1: dict, payload_2: dict):
+#     """
+#     Synchronous function that holds the lock and updates the model.
+#     Safe to run in a thread.
+#     """
+#     with state.model_lock:
+#         # 1. Merge the two NEW payloads (The consensus of this specific round)
+#         # We weight them 50/50 between the two partners
+#         exchange_merge = merge_payloads(payload_1, payload_2, alpha=0.5)
         
+#         # 2. Get the CURRENT global model state
+#         current_global_payload = get_trainable_state_dict(state.global_model)
 
-async def thread_safe_merge_and_evaluate(state: AgentState, payload_1: dict, payload_2: dict, role: str):
-    logging.info(role + f": Merging payloads...")
-    
-    # 1. Run the LOCKING logic in a separate thread
-    # This prevents the Main Loop from freezing while waiting for the lock
-    new_round_num, model_to_eval = await asyncio.to_thread(
-        _blocking_merge_logic, state, payload_1, payload_2
-    )
+#         # 3. Merge the Exchange Result with the Current Global Model
+#         # 20% Current Global (Anchor) + 80% New Exchange (Progress)
+#         # This is for not completely overwriting results from the other thread, but only take 20%
+#         final_merge = merge_payloads(current_global_payload, exchange_merge, alpha=0.2)
 
-    # 2. Evaluate (also in a thread)
-    val_loss, val_acc, correct, total = await asyncio.to_thread(
-        evaluate,
-        model_to_eval, 
-        state.val_loader, 
-        state.device, 
-        state.criterion
-    )
-    logging.info(role + f"Round {new_round_num} Merged Accuracy: {val_acc:.2f}% ({correct}/{total})")
+#         # 4. Update global model
+#         update_global_model(state.global_model, final_merge)
+        
+#         # 5. Increment round
+#         state.round_num += 1 
+#         new_round_num = state.round_num
+        
+#         # 6. Deepcopy for eval (so we can evaluate without holding the lock)
+#         model_to_eval = copy.deepcopy(state.global_model)
+        
+#     return new_round_num, model_to_eval

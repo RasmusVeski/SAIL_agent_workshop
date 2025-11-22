@@ -95,8 +95,8 @@ async def initiator_loop(state: AgentState, partner_url: str):
                 await asyncio.sleep(10)
                 continue
         
-            logging.info(f"Round {state.round_num} complete. Waiting 30s...")
-            await asyncio.sleep(30)
+            logging.info(f"Round {state.round_num} complete. Waiting 10s...")
+            await asyncio.sleep(10)
     
     logging.info(f"--- {state.agent_id} | INITIATOR FINISHED ---")
 
