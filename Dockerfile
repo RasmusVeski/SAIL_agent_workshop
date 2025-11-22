@@ -32,7 +32,9 @@ VOLUME /app/logs
 # is *intended* to run on port 9000.
 EXPOSE 9000
 
-# 9. Define the runtime command
-# This is the command that will run when the container starts.
-#CMD ["python", "services/agents/main_without_llm.py"]
-CMD ["python", "services/agents/without_llm/main.py"]
+# 9. Set the Entrypoint to python
+# This makes the container behave like the 'python' executable
+ENTRYPOINT ["python"]
+
+# 10. Set a DEFAULT script if not provided at runtime
+CMD ["services/agents/without_llm/main.py"]
