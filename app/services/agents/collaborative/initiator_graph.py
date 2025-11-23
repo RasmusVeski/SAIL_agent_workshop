@@ -269,6 +269,18 @@ def commit_to_global_model(alpha: float = 0.2):
     )
     result_str = f"Acc: {val_acc:.2f}%"
 
+    # Save to disk
+    save_dir = os.path.join(os.getcwd(), "models/collaborative") 
+    os.makedirs(save_dir, exist_ok=True)
+    
+    # Filename format: {round}_weight_{uid}.pt
+    state_singleton.global_model.dump_weights(
+        directory=save_dir, 
+        uid=state_singleton.agent_id, 
+        round=new_round
+    )
+    logging.info(f"INITIATOR: Saved model checkpoint to {save_dir}")
+
     partner_name = state_singleton.current_partner_id or "Unknown"
         
     history_entry = {
@@ -380,28 +392,25 @@ async def agent_node(state: GraphState):
     has_incoming = "YES" if state_singleton.initiator_incoming_payload else "NO"
     has_active_partner = "YES" if state_singleton.active_client else "NO"
     
-    sop = f"""You are an autonomous Federated Learning Agent (Initiator Role).
-    You have decided to wake up and consider a training round.
+    sop = f"""You are an autonomous Federated Learning Agent (Initiator).
+    **Goal:** Maximize Global Model Accuracy.
     
-    **State Context:**
-    - Connected to a Partner: {has_active_partner}
-    - Holding Incoming Weights: {has_incoming}
+    **Current Context:**
+    - Connected to Partner: {has_active_partner}
+    - Holding Partner Weights: {has_incoming}
+    - Current Hyperparameters: {hp_str}
     
-    **Your Learning History:**
+    **Strategic Guide:**
+    1. **Action Bias:** You prefer to ACT (Train/Merge/Commit) rather than tweak settings indefinitely.
+    2. **Commit Early, Commit Often:** If you have merged weights and accuracy is decent (or better than before), COMMIT it. Do not sit on a draft forever.
+    3. **Hyperparameters:** You have full control to change `lr`, `epochs`, or `mu`. 
+       - *Advice:* If accuracy is low (<20%), aggressive changes might be needed. If accuracy is stable, small tweaks are better. 
+       - *Warning:* Setting `epochs` too high (>5) often causes network timeouts with partners. Keep it snappy.
+    
+    **History:**
     {history_str}
     
-    **Current Hyperparameters:** {hp_str}
-    
-    **Goal:** Improve the Global Model.
-    
-    **Standard Workflow:**
-    1. `select_partner_agent` (If not connected or you want to switch).
-    2. `train_local_model` (Improve your own knowledge).
-    3. `exchange_weights_with_partner` (Send yours, get theirs).
-    4. `merge_with_incoming` (Combine them).
-    5. `commit_to_global_model` (Save to permanent memory).
-    
-    You are free to experiment! Change HPs, skip training if performance is good, or evaluate before committing.
+    If you are holding incoming weights, your immediate priority should be to MERGE and then COMMIT.
     """
     
     messages = [SystemMessage(content=sop)] + state["messages"]

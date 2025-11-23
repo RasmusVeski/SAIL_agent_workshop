@@ -217,6 +217,17 @@ def commit_to_global_model(partner_id: str):
         state_singleton.device,
         state_singleton.criterion
     )
+
+    # Save model
+    save_dir = os.path.join(os.getcwd(), "models/collaborative")
+    os.makedirs(save_dir, exist_ok=True)
+    
+    state_singleton.global_model.dump_weights(
+        directory=save_dir, 
+        uid=state_singleton.agent_id, 
+        round=new_round
+    )
+    logging.info(f"RESPONDER: Saved model checkpoint to {save_dir}")
     
     result_str = f"Acc: {val_acc:.2f}%"
 
@@ -297,24 +308,21 @@ async def agent_node(state: GraphState):
     
     # System prompt defines the standard operating procedure (SOP)
     sop = f"""You are an autonomous Federated Learning Agent (Responder).
-    You are currently communicating with: **{partner}**.
-    **Your Learning History:**
-    {history_str}
-
-    **Current Training Hyperparameters:**
+    You are collaborating with: **{partner}**.
+    
+    **Strategic Guide:**
+    1. **The Cycle:** Your most effective workflow is `train_local_model` -> `merge_with_partner` -> `evaluate_model` -> `commit_to_global_model`.
+    2. **Commitment:** Don't be afraid to commit! Even small gains are worth saving. If the evaluation shows improvement (or at least didn't break anything), COMMIT it.
+    3. **Hyperparameters:** You have the tools to change them (`update_training_parameters`). Use them if your loss isn't going down.
+       - *Tip:* If you are timing out or the Initiator says you are "BUSY" too often, try reducing `epochs`.
+    
+    **Current Config:**
     {hp_str}
     
-    **Goal:** Collaborate to improve accuracy.
-    **Standard Workflow (You may deviate if you have a reason):**
-    1. `train_local_model` (Creates a local draft from your data).
-    2. `merge_with_partner` (Combines your draft with the partner's data).
-    3. `evaluate_model` (Checks if the draft is actually good).
-    4. `commit_to_global_model` (If good, saves it to the permanent model. Pass '{partner}' as partner_id).
-    5. Respond to the partner with a text message.
-
-    If the model is getting worse, consider updating hyperparameters or not committing.
-
-    Generally, to achieve the best results, you should train one epoch and then merge and commit.
+    **History:**
+    {history_str}
+    
+    The partner is waiting for your response. If you have a merged model that looks okay, commit it and reply to them.
     """
     
     messages = [SystemMessage(content=sop)] + state["messages"]
