@@ -108,6 +108,8 @@ class FoodClassifier(Model):
     """
     def __init__(self):
         super().__init__()
+
+        torch.manual_seed(42) #Ensure agents start with same weights at classifier head
         
         # 1. Load a pre-trained MobileNetV3-Small
         # We use the "DEFAULT" weights, which are the best available
