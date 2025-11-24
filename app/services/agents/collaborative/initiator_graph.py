@@ -220,7 +220,7 @@ def merge_with_incoming(merge_alpha: float = 0.5):
     curr_state.update(merged_weights)
     temp_model.load_state_dict(curr_state)
     
-    val_loss, val_acc, correct, total = evaluate(
+    val_loss, val_acc, correct, total, classes_learned = evaluate(
         temp_model,
         state_singleton.val_loader,
         state_singleton.device,
@@ -234,12 +234,12 @@ def merge_with_incoming(merge_alpha: float = 0.5):
         "role": "INITIATOR",
         "partner": partner_id,
         "action": f"Merged (alpha={merge_alpha})",
-        "result": f"Acc: {val_acc:.2f}%"
+        "result": f"Acc: {val_acc:.2f}% (Classes: {classes_learned})"
     }
     
     state_singleton.log_history(history_entry)
     
-    msg = f"Merge complete. Alpha: {merge_alpha}. Resulting Accuracy: {val_acc:.2f}%. History updated."
+    msg = f"Merge complete. Alpha: {merge_alpha}. Acc: {val_acc:.2f}% | Classes: {classes_learned}/40."
     logger.info(f"[Result] {msg}")
     return msg
 
@@ -266,14 +266,14 @@ def commit_to_global_model(alpha: float = 0.2):
         alpha=alpha
     )
     
-    val_loss, val_acc, correct, total = evaluate(
+    val_loss, val_acc, correct, total, classes_learned = evaluate(
         model_for_eval,
         state_singleton.val_loader,
         state_singleton.device,
         state_singleton.criterion,
         logger=logger
     )
-    result_str = f"Acc: {val_acc:.2f}%"
+    result_str = f"Acc: {val_acc:.2f}% | Classes Learned: {classes_learned}/40"
 
     # Save to disk
     save_dir = os.path.join(os.getcwd(), "models/collaborative") 
@@ -334,14 +334,14 @@ def evaluate_model():
     
     model_instance = _load_temp_model()
     
-    val_loss, val_acc, correct, total = evaluate(
+    val_loss, val_acc, correct, total, classes_learned = evaluate(
         model_instance,
         state_singleton.val_loader,
         state_singleton.device,
         state_singleton.criterion,
         logger=logger
     )
-    msg = f"[{target_name}] Validation Results - Accuracy: {val_acc:.2f}%"
+    msg = f"[{target_name}] Acc: {val_acc:.2f}% | Classes Learned: {classes_learned}/40"
     logger.info(f"[Result] {msg}")
     return msg
 

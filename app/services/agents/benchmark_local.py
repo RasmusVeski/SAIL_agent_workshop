@@ -59,8 +59,8 @@ def main():
     
     # 3. Initial Eval
     criterion = torch.nn.CrossEntropyLoss()
-    val_loss, val_acc, _, _ = evaluate(model, val_loader, device, criterion)
-    logging.info(f"Initial (Pre-train) Accuracy: {val_acc:.2f}%")
+    val_loss, val_acc, _, _, classes_learned = evaluate(model, val_loader, device, criterion)
+    logging.info(f"Initial Accuracy: {val_acc:.2f}% | Classes Learned: {classes_learned}")
 
     # 4. Train (Using the shared training utility)
     # Note: We pass mu=0.0 because there is no global model to constrain us (no FedProx)

@@ -147,7 +147,7 @@ async def thread_safe_merge_and_evaluate(state: AgentState, payload_1: dict, pay
     )
 
     # 2. Evaluate (also in a thread)
-    val_loss, val_acc, correct, total = await asyncio.to_thread(
+    val_loss, val_acc, correct, total, classes_learned = await asyncio.to_thread(
         evaluate,
         model_to_eval, 
         state.val_loader, 
@@ -424,7 +424,7 @@ async def on_startup():
     state_singleton.global_model = FoodClassifier()
     state_singleton.criterion = torch.nn.CrossEntropyLoss()
     
-    val_loss, val_acc, _, _ = evaluate(
+    val_loss, val_acc, _, _, classes_learned = evaluate(
         state_singleton.global_model, state_singleton.val_loader, state_singleton.device, state_singleton.criterion
     )
     logging.info(f"Round 0 Initial Accuracy: {val_acc:.2f}%")

@@ -11,6 +11,7 @@ NUM_CLASSES = 40 #For Food dataset
 def evaluate(model, val_loader, device, criterion, logger=None):
     """
     Performs a single evaluation pass on the validation set.
+    Returns: avg_loss, accuracy, correct, total_samples, classes_learned
     """
 
     # Fallback to root logger if specific logger not provided
@@ -54,7 +55,7 @@ def evaluate(model, val_loader, device, criterion, logger=None):
 
     if valid_batches == 0 or total_samples == 0:
         log.warning("Validation had zero valid batches.")
-        return 0.0, 0.0, 0, 0
+        return 0.0, 0.0, 0, 0, 0
 
     avg_loss = total_loss / valid_batches
     overall_accuracy = 100 * correct / total_samples
@@ -78,7 +79,7 @@ def evaluate(model, val_loader, device, criterion, logger=None):
     classes_learned = sum(1 for acc in accuracies if acc > 0.0)
     log.info(f"[Eval Details] Macro-Avg Acc: {macro_avg_acc:.2f}% | Classes Learned: {classes_learned}/{NUM_CLASSES}")
 
-    return avg_loss, overall_accuracy, correct, total_samples
+    return avg_loss, overall_accuracy, correct, total_samples, classes_learned
 
 def train(model, train_loader, val_loader, epochs, learning_rate, device, 
           val_frequency=1, weight_decay=0.0, lr_scheduler_step_size=7,
@@ -127,21 +128,20 @@ def train(model, train_loader, val_loader, epochs, learning_rate, device,
     # --- 1. Pre-training Evaluation ---
     if val_loader:
         log.info(log_prefix + "Performing pre-training evaluation...")
-        avg_val_loss, accuracy, correct, total = evaluate(model, val_loader, device, criterion)
-        log.info(log_prefix + f"--- PRE-TRAINING VALIDATION ---")
-        log.info(log_prefix + f"Validation Loss: {avg_val_loss:.4f} | "
-                     f"Validation Acc: {accuracy:.2f}% ({correct}/{total})")
+        avg_val_loss, accuracy, correct, total, classes_learned = evaluate(model, val_loader, device, criterion)
+        log.info(log_prefix + f"Pre Training Val Acc: {accuracy:.2f}% | Knowledge: {classes_learned}/{NUM_CLASSES}")
         history.append({
             'epoch': 0,
             'train_loss': None,
             'val_loss': avg_val_loss,
-            'val_acc': accuracy
+            'val_acc': accuracy,
+            'classes_learned': classes_learned
         })
     
     log.info(log_prefix + f"Starting training on {device} for {epochs} epochs...")
 
     if mu > 0 and global_model is not None:
-        log.info(log_prefix + f"--- FedProx Training Enabled (mu={mu}) ---")
+        log.info(log_prefix + f" FedProx Training Enabled (mu={mu})")
         # Ensure global model is on the same device
         global_model.to(device)
     
@@ -200,15 +200,14 @@ def train(model, train_loader, val_loader, epochs, learning_rate, device,
 
         # --- 3. Validation Phase ---
 
-        val_loss, val_acc = None, None
+        val_loss, val_acc, val_classes = None, None, None
         if val_loader and (epoch + 1) % val_frequency == 0:
-            avg_val_loss, accuracy, correct, total = evaluate(model, val_loader, device, criterion)
+            avg_val_loss, accuracy, correct, total, classes_learned = evaluate(model, val_loader, device, criterion)
             val_loss = avg_val_loss
             val_acc = accuracy
             
             log.info(log_prefix + f"--- Epoch {epoch+1}/{epochs} VALIDATION ---")
-            log.info(log_prefix + f"Validation Loss: {avg_val_loss:.4f} | "
-                          f"Validation Acc: {accuracy:.2f}% ({correct}/{total})")
+            log.info(log_prefix + f"Val Acc: {accuracy:.2f}% | Knowledge: {classes_learned}/{NUM_CLASSES}")
             
         else:
             log.info(log_prefix + f"Epoch {epoch+1}/{epochs} training complete (validation skipped).")
@@ -218,7 +217,8 @@ def train(model, train_loader, val_loader, epochs, learning_rate, device,
             'epoch': epoch + 1,
             'train_loss': avg_epoch_train_loss,
             'val_loss': val_loss,
-            'val_acc': val_acc
+            'val_acc': val_acc,
+            'classes_learned': val_classes
         })
 
     log.info(log_prefix + "Finished Training")

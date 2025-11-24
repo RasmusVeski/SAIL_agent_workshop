@@ -69,11 +69,11 @@ async def thread_safe_merge_and_evaluate(state: AgentState, payload_1: dict, pay
     )
 
     # 2. Evaluate (also in a thread)
-    val_loss, val_acc, correct, total = await asyncio.to_thread(
+    val_loss, val_acc, correct, total, classes_learned = await asyncio.to_thread(
         evaluate,
         model_to_eval, 
         state.val_loader, 
         state.device, 
         state.criterion
     )
-    logging.info(f"{role}: Round {new_round_num} ({role}) Merged Accuracy: {val_acc:.2f}% ({correct}/{total})")
+    logging.info(f"{role}: Round {new_round_num} ({role}) Merged Accuracy: {val_acc:.2f}% ({correct}/{total}) | Classes: {classes_learned}/{40}")
