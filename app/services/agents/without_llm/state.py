@@ -17,9 +17,9 @@ from utils.training import evaluate
 NUM_ROUNDS = 20
 AGENT_HPS = {
     'epochs': 1, 
-    'learning_rate': 1e-4, 
-    'weight_decay': 1e-3, 
-    'mu': 0.5,
+    'learning_rate': 0.002, 
+    'weight_decay': 1e-4, 
+    'mu': 0.2,
     'val_frequency': 1,       
     'lr_scheduler_step_size': 999 
 }

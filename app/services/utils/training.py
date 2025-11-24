@@ -15,31 +15,35 @@ def evaluate(model, val_loader, device, criterion, logger=None):
     log = logger if logger else logging.getLogger()
 
     model.eval()
-    val_loss = 0.0
+    total_loss = 0.0
+    total_samples = 0
     correct = 0
-    total = 0
+    valid_batches = 0
     
     with torch.no_grad():
         for data, labels in val_loader:
-            if -1 in labels:
+            if (labels == -1).any():
                 continue
-                
+
             data, labels = data.to(device), labels.to(device)
             outputs = model(data)
             loss = criterion(outputs, labels)
-            
-            val_loss += loss.item()
-            _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-    
-    if total == 0:
-        log.warning("Validation set empty or all batches bad.")
-        return 0.0, 0.0
 
-    avg_val_loss = val_loss / len(val_loader)
-    accuracy = 100 * correct / total
-    return avg_val_loss, accuracy, correct, total
+            total_loss += loss.item()
+            valid_batches += 1
+
+            predicted = outputs.argmax(dim=1)
+            total_samples += labels.size(0)
+            correct += (predicted == labels).sum().item()
+
+    if valid_batches == 0 or total_samples == 0:
+        log.warning("Validation had zero valid batches.")
+        return 0.0, 0.0, 0, 0
+
+    avg_loss = total_loss / valid_batches
+    accuracy = 100 * correct / total_samples
+
+    return avg_loss, accuracy, correct, total_samples
 
 def train(model, train_loader, val_loader, epochs, learning_rate, device, 
           val_frequency=1, weight_decay=0.0, lr_scheduler_step_size=7,
@@ -116,7 +120,7 @@ def train(model, train_loader, val_loader, epochs, learning_rate, device,
         train_loader_tqdm = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs} [Train]", leave=False)
         
         for i, (data, labels) in enumerate(train_loader_tqdm):
-            if -1 in labels:
+            if (labels == -1).any():
                 log.warning(log_prefix + "Skipping bad batch")
                 continue
                 
@@ -157,29 +161,22 @@ def train(model, train_loader, val_loader, epochs, learning_rate, device,
         scheduler.step()
 
         avg_epoch_train_loss = epoch_train_loss / train_batches if train_batches > 0 else 0.0
-        log.info(log_prefix + log_prefix + f"Epoch {epoch+1}/{epochs} training complete. Avg Train Loss: {avg_epoch_train_loss:.4f}")
+        log.info(log_prefix + f"Epoch {epoch+1}/{epochs} training complete. Avg Train Loss: {avg_epoch_train_loss:.4f}")
 
         # --- 3. Validation Phase ---
 
         val_loss, val_acc = None, None
         if val_loader and (epoch + 1) % val_frequency == 0:
             avg_val_loss, accuracy, correct, total = evaluate(model, val_loader, device, criterion)
+            val_loss = avg_val_loss
+            val_acc = accuracy
             
             log.info(log_prefix + f"--- Epoch {epoch+1}/{epochs} VALIDATION ---")
             log.info(log_prefix + f"Validation Loss: {avg_val_loss:.4f} | "
-                         f"Validation Acc: {accuracy:.2f}% ({correct}/{total})")
-            history.append({
-                'epoch': epoch + 1,
-                'train_loss': avg_epoch_train_loss,
-                'val_loss': avg_val_loss,
-                'val_acc': accuracy
-            })
-        
-        elif val_loader:
-            log.info(log_prefix + f"Epoch {epoch+1}/{epochs} training complete (validation skipped).")
-
+                          f"Validation Acc: {accuracy:.2f}% ({correct}/{total})")
+            
         else:
-            log.info(log_prefix + f"Epoch {epoch+1}/{epochs} training complete (no validation).")
+            log.info(log_prefix + f"Epoch {epoch+1}/{epochs} training complete (validation skipped).")
 
         # Always push training metrics to history, even without validation
         history.append({

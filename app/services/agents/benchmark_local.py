@@ -76,13 +76,23 @@ def main():
     )
 
     # 5. Final Results
-    final_acc = history[-1]['val_acc']
-    best_acc = max([h['val_acc'] for h in history if h['val_acc'] is not None])
-    
+    final_acc = next(
+    (h['val_acc'] for h in reversed(history) if h['val_acc'] is not None),
+    None
+    )
+    vals = [h['val_acc'] for h in history if h['val_acc'] is not None]
+    best_acc = max(vals) if vals else None
+        
     logging.info("-" * 30)
     logging.info(f"BENCHMARK COMPLETE")
-    logging.info(f"Final Accuracy: {final_acc:.2f}%")
-    logging.info(f"Peak Accuracy:  {best_acc:.2f}%")
+    if final_acc is None:
+        logging.info(f"Final Accuracy: N/A (no validation for last epoch)")
+    else:
+        logging.info(f"Final Accuracy: {final_acc:.2f}%")
+    if best_acc is None:
+        logging.info(f"Best Accuracy: N/A")
+    else:
+        logging.info(f"Peak Accuracy:  {best_acc:.2f}%")
     logging.info("-" * 30)
 
     # 6. Save
