@@ -4,6 +4,7 @@ import torch.optim as optim
 from torch.optim import lr_scheduler
 from tqdm.auto import tqdm
 import logging
+import numpy as np
 
 NUM_CLASSES = 40 #For Food dataset
 
