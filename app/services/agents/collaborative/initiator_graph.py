@@ -27,10 +27,13 @@ from utils.training import train, evaluate
 from utils.federated_utils import merge_payloads
 from utils.payload_utils import get_trainable_state_dict, serialize_payload_to_b64, deserialize_payload_from_b64
 from utils.a2a_helpers import WeightExchangePayload, send_and_parse_a2a_message
+from utils.logger_colored import get_specialized_logger
 
 # --- 1. The Graph State ---
 class GraphState(TypedDict):
     messages: Annotated[List[AnyMessage], operator.add]
+
+logger = get_specialized_logger("initiator", agent_id=state_singleton.agent_id)
 
 # --- 2. Helper: Workspace Management ---
 def _get_or_create_working_copy():
@@ -39,7 +42,7 @@ def _get_or_create_working_copy():
     If not, creates it from the current global model.
     """
     if state_singleton.initiator_working_weights is None:
-        logging.info("INITIATOR: Creating new working copy from Global Model.")
+        logger.info("Creating new working copy from Global Model.")
         with state_singleton.model_lock:
             state_singleton.initiator_working_weights = get_trainable_state_dict(state_singleton.global_model)
     return state_singleton.initiator_working_weights
@@ -56,7 +59,7 @@ async def select_partner_agent():
     This MUST be called before exchanging weights.
     Choosing a new partner clears any old incoming weights you might have held.
     """
-    logging.info("INITIATOR: [Tool] Selecting partner...")
+    logger.info("[Tool] Selecting partner...")
     
     partners = state_singleton.available_partners
     if not partners:
@@ -76,7 +79,7 @@ async def select_partner_agent():
     # Establish Connection
     resolver = A2ACardResolver(state_singleton.shared_httpx_client, base_url=target_url)
     try:
-        logging.info(f"INITIATOR: Resolving card for {target_url}...")
+        logger.info(f"Resolving card for {target_url}...")
         card = await resolver.get_agent_card()
         config = ClientConfig(state_singleton.shared_httpx_client)
         client = await ClientFactory.connect(agent=card, client_config=config)
@@ -87,7 +90,7 @@ async def select_partner_agent():
         
     except Exception as e:
         msg = f"Failed to connect to {target_url}: {e}"
-        logging.warning(f"INITIATOR: [Result] {msg}")
+        logger.warning(f"[Result] {msg}")
         return msg
 
 @tool
@@ -96,7 +99,7 @@ def train_local_model():
     Trains the local model on the agent's private dataset.
     Stores the result in the local workspace for the exchange step.
     """
-    logging.info("INITIATOR: [Tool] Starting local training...")
+    logger.info("[Tool] Starting local training...")
     
     # 1. Get Weights (Lazy Load)
     weights_to_train = _get_or_create_working_copy()
@@ -118,6 +121,7 @@ def train_local_model():
         val_loader=None,
         global_model=model_instance,
         device=state_singleton.device,
+        logger=logger,
         **state_singleton.agent_hps
     )
     
@@ -127,7 +131,7 @@ def train_local_model():
     
     loss = history[-1]['train_loss'] if history else "N/A"
     msg = f"Training complete. Final Loss: {loss:.4f}. Local draft updated."
-    logging.info(f"INITIATOR: [Result] {msg}")
+    logger.info(f"[Result] {msg}")
     return msg
 
 @tool
@@ -136,7 +140,7 @@ async def exchange_weights_with_partner(message_to_partner: str = "Starting exch
     Sends the locally trained weights (or current global weights if untrained) 
     to the active partner and waits for their response.
     """
-    logging.info("INITIATOR: [Tool] Exchanging weights...")
+    logger.info("[Tool] Exchanging weights...")
     
     client = state_singleton.active_client
     if not client:
@@ -158,13 +162,13 @@ async def exchange_weights_with_partner(message_to_partner: str = "Starting exch
     try:
         # 3. Send & Receive
         response_data, responder_payload = await send_and_parse_a2a_message(
-            client, request_payload_obj, state_singleton.global_model
+            client, request_payload_obj, state_singleton.global_model, logger=logger
         )
 
         # Check 1: Is the partner busy?
         if response_data.message == "BUSY":
             state_singleton.initiator_incoming_payload = None # Clear old data
-            logging.info(f"INITIATOR: Partner {response_data.agent_id} is BUSY.")
+            logger.info(f"Partner {response_data.agent_id} is BUSY.")
             return f"Exchange Failed: Partner {response_data.agent_id} is currently BUSY. Please wait or select a different partner."
 
         # Check 2: Did they just send a chat message without weights?
@@ -176,11 +180,11 @@ async def exchange_weights_with_partner(message_to_partner: str = "Starting exch
         state_singleton.initiator_incoming_payload = responder_payload
         
         msg = f"Exchange successful! Partner ({response_data.agent_id}) sent new weights."
-        logging.info(f"INITIATOR: [Result] {msg}")
+        logger.info(f"[Result] {msg}")
         return msg
         
     except Exception as e:
-        logging.error(f"Tool Exchange failed: {e}")
+        logger.error(f"Tool Exchange failed: {e}")
         return f"Error during exchange: {e}"
 
 @tool
@@ -194,7 +198,7 @@ def merge_with_incoming(merge_alpha: float = 0.5):
                              0.8 = Keep 80% yours, 20% theirs.
                              0.2 = Keep 20% yours, 80% theirs.
     """
-    logging.info(f"INITIATOR: [Tool] Merging incoming weights (alpha={merge_alpha})...")
+    logger.info(f"[Tool] Merging incoming weights (alpha={merge_alpha})...")
     
     if not state_singleton.initiator_incoming_payload:
         return "Error: No incoming weights found. The last exchange might have failed or the partner was BUSY. Cannot merge."
@@ -220,7 +224,8 @@ def merge_with_incoming(merge_alpha: float = 0.5):
         temp_model,
         state_singleton.val_loader,
         state_singleton.device,
-        state_singleton.criterion
+        state_singleton.criterion,
+        logger=logger
     )
 
     partner_id = state_singleton.current_partner_id or "Unknown"
@@ -235,7 +240,7 @@ def merge_with_incoming(merge_alpha: float = 0.5):
     state_singleton.log_history(history_entry)
     
     msg = f"Merge complete. Alpha: {merge_alpha}. Resulting Accuracy: {val_acc:.2f}%. History updated."
-    logging.info(f"INITIATOR: [Result] {msg}")
+    logger.info(f"[Result] {msg}")
     return msg
 
 
@@ -250,7 +255,7 @@ def commit_to_global_model(alpha: float = 0.2):
                        0.5 = Keep 50% Old (Very Safe/Slow).
                        0.0 = OVERWRITE Global with Draft (Commit without merging).
     """
-    logging.info(f"INITIATOR: [Tool] Committing to Global (alpha={alpha})...")
+    logger.info(f"[Tool] Committing to Global (alpha={alpha})...")
 
     if state_singleton.initiator_working_weights is None:
         return "Error: No Local Draft exists. Train or Merge first."
@@ -265,7 +270,8 @@ def commit_to_global_model(alpha: float = 0.2):
         model_for_eval,
         state_singleton.val_loader,
         state_singleton.device,
-        state_singleton.criterion
+        state_singleton.criterion,
+        logger=logger
     )
     result_str = f"Acc: {val_acc:.2f}%"
 
@@ -279,7 +285,7 @@ def commit_to_global_model(alpha: float = 0.2):
         uid=state_singleton.agent_id, 
         round=new_round
     )
-    logging.info(f"INITIATOR: Saved model checkpoint to {save_dir}")
+    logger.info(f"Saved model checkpoint to {save_dir}")
 
     partner_name = state_singleton.current_partner_id or "Unknown"
         
@@ -297,7 +303,7 @@ def commit_to_global_model(alpha: float = 0.2):
     state_singleton.initiator_incoming_payload = None
     
     msg = f"Success! Global Model updated to Round {new_round}. Final Acc: {val_acc:.2f}%"
-    logging.info(f"INITIATOR: [Result] {msg}")
+    logger.info(f"[Result] {msg}")
     return msg
 
 @tool
@@ -307,7 +313,7 @@ def evaluate_model():
     If you have a Local Draft, it evaluates that.
     If you don't, it evaluates the Global Model.
     """
-    logging.info("INITIATOR: [Tool] Evaluating model...")
+    logger.info("[Tool] Evaluating model...")
     
     target_name = "Global Model"
     if state_singleton.initiator_working_weights is not None:
@@ -332,16 +338,17 @@ def evaluate_model():
         model_instance,
         state_singleton.val_loader,
         state_singleton.device,
-        state_singleton.criterion
+        state_singleton.criterion,
+        logger=logger
     )
     msg = f"[{target_name}] Validation Results - Accuracy: {val_acc:.2f}%"
-    logging.info(f"INITIATOR: [Result] {msg}")
+    logger.info(f"[Result] {msg}")
     return msg
 
 @tool
 def update_training_parameters(learning_rate: float = None, epochs: int = None, mu: float = None):
     """Updates hyperparameters."""
-    logging.info(f"INITIATOR: [Tool] Updating HPs: lr={learning_rate}, epochs={epochs}, mu={mu}")
+    logger.info(f"[Tool] Updating HPs: lr={learning_rate}, epochs={epochs}, mu={mu}")
     changes = []
     if learning_rate is not None:
         state_singleton.agent_hps['learning_rate'] = learning_rate

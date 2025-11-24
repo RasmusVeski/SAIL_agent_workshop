@@ -22,6 +22,7 @@ from utils.a2a_helpers import (
     parse_incoming_request,
     send_a2a_response
 )
+from utils.logger_colored import get_specialized_logger
 
 class CollaborativeResponderExecutor(AgentExecutor):
     
@@ -33,10 +34,11 @@ class CollaborativeResponderExecutor(AgentExecutor):
         context: RequestContext,
         event_queue: EventQueue,
     ) -> None:
+        logger = get_specialized_logger("responder", agent_id=self.state.agent_id)
         
         # --- 1. BUSY CHECK (Fast Fail) ---
         if self.state.responder_lock.locked():
-            logging.info("RESPONDER: Locked/Busy. Rejecting incoming request immediately.")
+            logger.info("Locked/Busy. Rejecting incoming request immediately.")
             
             # Send a polite "Busy" payload
             # We send None/Empty string for payload to save bandwidth
@@ -46,29 +48,29 @@ class CollaborativeResponderExecutor(AgentExecutor):
                 message="BUSY"  # Magic keyword for the initiator to recognize
             )
             
-            await send_a2a_response(event_queue, busy_payload)
+            await send_a2a_response(event_queue, busy_payload, logger=logger)
             return
         
         # --- CRITICAL: ACQUIRE LOCK ---
         # This ensures we don't overwrite the singleton if multiple agents
         async with self.state.responder_lock:
 
-            logging.info(f"--- {self.state.agent_id} | RESPONDER ACTIVE ---")
-            logging.info("RESPONDER: Received federated_weight_exchange request.")
+            logger.info(f"--- {self.state.agent_id} | RESPONDER ACTIVE ---")
+            logger.info("Received federated_weight_exchange request.")
             
             # 1. Deserialize initiator's payload
             try:
                 request_data, initiator_payload = parse_incoming_request(
-                    context, self.state.global_model
+                    context, self.state.global_model, logger=logger
                 )
-                logging.info(f"RESPONDER: Message from {request_data.agent_id}: {request_data.message}")
+                logger.info(f"Message from {request_data.agent_id}: {request_data.message}")
 
                 self.state.responder_incoming_payload = initiator_payload
                 self.state.responder_working_weights = None
             except Exception as e:
-                logging.error(f"RESPONDER: Payload deserialization failed: {e}")
+                logger.error(f"Payload deserialization failed: {e}")
                 await event_queue.enqueue_event(
-                    new_agent_text_message(f"RESPONDER: Error: Corrupt payload: {e}")
+                    new_agent_text_message(f"Error: Corrupt payload: {e}")
                 )
                 return
             
@@ -79,11 +81,11 @@ class CollaborativeResponderExecutor(AgentExecutor):
             }
 
             try:
-                logging.info("RESPONDER: Invoking Agent Brain...")
+                logger.info("Invoking Agent Brain...")
                 final_state = await responder_graph.ainvoke(inputs)
-                logging.info("RESPONDER: Agent Brain finished processing.")
+                logger.info("Agent Brain finished processing.")
             except Exception as e:
-                logging.error(f"RESPONDER: Graph execution failed: {e}. Proceeding with fallback.")
+                logger.error(f"Graph execution failed: {e}. Proceeding with fallback.")
                 final_state = {}
 
 
@@ -94,11 +96,11 @@ class CollaborativeResponderExecutor(AgentExecutor):
                 last_msg = final_state["messages"][-1]
                 if isinstance(last_msg, AIMessage) and last_msg.content:
                     response_msg = str(last_msg.content)
-                    logging.info(f"RESPONDER: Agent chose to say: '{response_msg}'")
+                    logger.info(f"Agent chose to say: '{response_msg}'")
 
             # Check for draft weights (Training happened, but no commit)
             if state_singleton.responder_working_weights is not None:
-                logging.info("RESPONDER: Found draft (newest) weights from Agent.")
+                logger.info("Found draft (newest) weights from Agent.")
                 weights_to_send = state_singleton.responder_working_weights
                 state_singleton.responder_working_weights = None
             else:
@@ -124,16 +126,16 @@ class CollaborativeResponderExecutor(AgentExecutor):
 
             
             try:
-                await send_a2a_response(event_queue, response_payload)
+                await send_a2a_response(event_queue, response_payload, logger=logger)
             except Exception as e:
-                logging.error(f"RESPONDER: Failed to send response: {e}")
+                logger.error(f"Failed to send response: {e}")
                 await event_queue.enqueue_event(
                     new_agent_text_message(f"Error: Failed to build response: {e}")
                 )
 
             self.state.responder_incoming_payload = None
             self.state.responder_working_weights = None
-            logging.info(f"--- {self.state.agent_id} | RESPONDER DONE ---")
+            logger.info(f"--- {self.state.agent_id} | RESPONDER DONE ---")
 
 
     async def cancel(

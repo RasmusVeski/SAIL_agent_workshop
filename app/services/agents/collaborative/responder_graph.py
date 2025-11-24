@@ -25,6 +25,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.
 from utils.training import train, evaluate
 from utils.federated_utils import merge_payloads
 from utils.payload_utils import get_trainable_state_dict, deserialize_payload_from_b64
+from utils.logger_colored import get_specialized_logger
 
 # --- 1. The Graph State ---
 # This tracks the *conversation* and the *request context*, not the model weights.
@@ -32,6 +33,7 @@ class GraphState(TypedDict):
     messages: Annotated[List[AnyMessage], operator.add]
     partner_id: str
 
+logger = get_specialized_logger("responder", agent_id=state_singleton.agent_id)
 
 # --- 2. Workspace management ---
 def _get_or_create_working_copy():
@@ -40,7 +42,7 @@ def _get_or_create_working_copy():
     If not, creates it from the current global model.
     """
     if state_singleton.responder_working_weights is None:
-        logging.info("RESPONDER: Creating new working copy from Global Model.")
+        logger.info("Creating new working copy from Global Model.")
         with state_singleton.model_lock:
             state_singleton.responder_working_weights = get_trainable_state_dict(state_singleton.global_model)
     return state_singleton.responder_working_weights
@@ -57,7 +59,7 @@ def train_local_model():
     If a local draft exists, it trains on that. Otherwise, it starts from the Global Model.
     Updates the local draft with the training results.
     """
-    logging.info("RESPONDER: [Tool] Starting local training...")
+    logger.info("[Tool] Starting local training...")
     
     # 1. Get Weights (Lazy Load)
     weights_to_train = _get_or_create_working_copy()
@@ -83,6 +85,7 @@ def train_local_model():
         val_loader=None,
         global_model=model_instance, # Self-reference for FedProx in local loop
         device=state_singleton.device,
+        logger=logger,
         **state_singleton.agent_hps
     )
     
@@ -92,7 +95,7 @@ def train_local_model():
     
     loss = history[-1]['train_loss'] if history else "N/A"
     msg = f"Training complete. Final Loss: {loss:.4f}. Local draft updated."
-    logging.info(f"RESPONDER: [Result] {msg}")
+    logger.info(f"[Result] {msg}")
     return msg
 
 
@@ -103,7 +106,7 @@ def merge_with_partner(partner_id: str, merge_alpha: float = 0.5):
     Does NOT update the Global Model.
     0 <= merge_alpha <= 1, the bigger the more of local model retained
     """
-    logging.info(f"RESPONDER: [Tool] Merging with {partner_id}...")
+    logger.info(f"[Tool] Merging with {partner_id}...")
     
     if not hasattr(state_singleton, 'incoming_payload') or not state_singleton.responder_incoming_payload:
         return "Error: No incoming payload found from partner."
@@ -132,7 +135,8 @@ def merge_with_partner(partner_id: str, merge_alpha: float = 0.5):
         temp_model,
         state_singleton.val_loader,
         state_singleton.device,
-        state_singleton.criterion
+        state_singleton.criterion,
+        logger=logger
     )
     
     # 5. Log History
@@ -146,7 +150,7 @@ def merge_with_partner(partner_id: str, merge_alpha: float = 0.5):
     state_singleton.log_history(history_entry)
 
     msg = f"Merge complete. Alpha: {merge_alpha}. Resulting Accuracy: {val_acc:.2f}%. History updated."
-    logging.info(f"RESPONDER: [Result] {msg}")
+    logging.info(f"[Result] {msg}")
     return msg
 
 @tool
@@ -156,7 +160,7 @@ def evaluate_model():
     If you have a Local Draft, it evaluates that.
     If you don't, it evaluates the Global Model.
     """
-    logging.info("RESPONDER: [Tool] Evaluating model...")
+    logger.info("[Tool] Evaluating model...")
     
     target_name = "Global Model"
     
@@ -184,11 +188,12 @@ def evaluate_model():
         model_instance,
         state_singleton.val_loader,
         state_singleton.device,
-        state_singleton.criterion
+        state_singleton.criterion,
+        logger=logger
     )
     
     msg = f"[{target_name}] Validation Results - Accuracy: {val_acc:.2f}% ({correct}/{total})"
-    logging.info(f"RESPONDER: [Result] {msg}")
+    logger.info(f"[Result] {msg}")
     return msg
 
 
@@ -198,7 +203,7 @@ def commit_to_global_model(partner_id: str):
     Commits the Local Draft to the Global Model.
     This is the FINAL step. It mixes the draft with the current Global Model (Safety Anchor) and saves it.
     """
-    logging.info("RESPONDER: [Tool] Committing to Global...")
+    logger.info("[Tool] Committing to Global...")
 
     if state_singleton.responder_working_weights is None:
         return "Error: No Local Draft exists. Train or Merge first."
@@ -215,7 +220,8 @@ def commit_to_global_model(partner_id: str):
         model_for_eval,
         state_singleton.val_loader,
         state_singleton.device,
-        state_singleton.criterion
+        state_singleton.criterion,
+        logger=logger
     )
 
     # Save model
@@ -227,7 +233,7 @@ def commit_to_global_model(partner_id: str):
         uid=state_singleton.agent_id, 
         round=new_round
     )
-    logging.info(f"RESPONDER: Saved model checkpoint to {save_dir}")
+    logger.info(f"Saved model checkpoint to {save_dir}")
     
     result_str = f"Acc: {val_acc:.2f}%"
 
@@ -245,7 +251,7 @@ def commit_to_global_model(partner_id: str):
     state_singleton.responder_working_weights = None
     
     msg = f"Success! Global Model updated to Round {new_round}. Final Acc: {val_acc:.2f}%"
-    logging.info(f"RESPONDER: [Result] {msg}")
+    logger.info(f"[Result] {msg}")
     return msg
 
 
@@ -260,7 +266,7 @@ def update_training_parameters(learning_rate: float = None, epochs: int = None, 
         epochs: Number of training passes per round (e.g., 1, 2, 5)
         mu: FedProx proximal term weight (e.g., 0.0, 0.5, 1.0)
     """
-    logging.info(f"RESPONDER: [Tool] Updating HPs: lr={learning_rate}, epochs={epochs}, mu={mu}")
+    logger.info(f"[Tool] Updating HPs: lr={learning_rate}, epochs={epochs}, mu={mu}")
     
     changes = []
     if learning_rate is not None:

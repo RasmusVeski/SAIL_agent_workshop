@@ -6,10 +6,14 @@ from tqdm.auto import tqdm
 import logging
 
 
-def evaluate(model, val_loader, device, criterion):
+def evaluate(model, val_loader, device, criterion, logger=None):
     """
     Performs a single evaluation pass on the validation set.
     """
+
+    # Fallback to root logger if specific logger not provided
+    log = logger if logger else logging.getLogger()
+
     model.eval()
     val_loss = 0.0
     correct = 0
@@ -30,7 +34,7 @@ def evaluate(model, val_loader, device, criterion):
             correct += (predicted == labels).sum().item()
     
     if total == 0:
-        logging.warning("Validation set empty or all batches bad.")
+        log.warning("Validation set empty or all batches bad.")
         return 0.0, 0.0
 
     avg_val_loss = val_loss / len(val_loader)
@@ -39,7 +43,7 @@ def evaluate(model, val_loader, device, criterion):
 
 def train(model, train_loader, val_loader, epochs, learning_rate, device, 
           val_frequency=1, weight_decay=0.0, lr_scheduler_step_size=7,
-          global_model=None, mu=0.0, log_prefix=""):
+          global_model=None, mu=0.0, log_prefix="", logger=None):
     """
     A standalone training function for an agent's model.
     Now includes weight_decay, a scheduler, and returns a metrics history.
@@ -63,7 +67,8 @@ def train(model, train_loader, val_loader, epochs, learning_rate, device,
     - history (list): A list of dictionaries containing metrics for each validation step.
     """
     
-    #torch.set_num_threads(4) #Fix cpu usage so network doesn't die
+    # Fallback to root logger if specific logger not provided (Legacy compatibility)
+    log = logger if logger else logging.getLogger()
 
     history = []
     criterion = nn.CrossEntropyLoss()
@@ -82,10 +87,10 @@ def train(model, train_loader, val_loader, epochs, learning_rate, device,
     
     # --- 1. Pre-training Evaluation ---
     if val_loader:
-        logging.info(log_prefix + "Performing pre-training evaluation...")
+        log.info(log_prefix + "Performing pre-training evaluation...")
         avg_val_loss, accuracy, correct, total = evaluate(model, val_loader, device, criterion)
-        logging.info(log_prefix + f"--- PRE-TRAINING VALIDATION ---")
-        logging.info(log_prefix + f"Validation Loss: {avg_val_loss:.4f} | "
+        log.info(log_prefix + f"--- PRE-TRAINING VALIDATION ---")
+        log.info(log_prefix + f"Validation Loss: {avg_val_loss:.4f} | "
                      f"Validation Acc: {accuracy:.2f}% ({correct}/{total})")
         history.append({
             'epoch': 0,
@@ -94,10 +99,10 @@ def train(model, train_loader, val_loader, epochs, learning_rate, device,
             'val_acc': accuracy
         })
     
-    logging.info(log_prefix + f"Starting training on {device} for {epochs} epochs...")
+    log.info(log_prefix + f"Starting training on {device} for {epochs} epochs...")
 
     if mu > 0 and global_model is not None:
-        logging.info(log_prefix + f"--- FedProx Training Enabled (mu={mu}) ---")
+        log.info(log_prefix + f"--- FedProx Training Enabled (mu={mu}) ---")
         # Ensure global model is on the same device
         global_model.to(device)
     
@@ -112,7 +117,7 @@ def train(model, train_loader, val_loader, epochs, learning_rate, device,
         
         for i, (data, labels) in enumerate(train_loader_tqdm):
             if -1 in labels:
-                logging.warning(log_prefix + "Skipping bad batch")
+                log.warning(log_prefix + "Skipping bad batch")
                 continue
                 
             data, labels = data.to(device), labels.to(device)
@@ -145,14 +150,14 @@ def train(model, train_loader, val_loader, epochs, learning_rate, device,
             if i % 10 == 9: 
                 avg_loss = running_loss / 10
                 train_loader_tqdm.set_postfix(loss=f"{avg_loss:.3f}")
-                logging.debug(log_prefix + f"Epoch {epoch+1}, Batch {i+1}, Avg. Loss: {avg_loss:.3f}")
+                log.debug(log_prefix + f"Epoch {epoch+1}, Batch {i+1}, Avg. Loss: {avg_loss:.3f}")
                 running_loss = 0.0
         
         # Step the learning rate scheduler
         scheduler.step()
 
         avg_epoch_train_loss = epoch_train_loss / train_batches if train_batches > 0 else 0.0
-        logging.info(log_prefix + log_prefix + f"Epoch {epoch+1}/{epochs} training complete. Avg Train Loss: {avg_epoch_train_loss:.4f}")
+        log.info(log_prefix + log_prefix + f"Epoch {epoch+1}/{epochs} training complete. Avg Train Loss: {avg_epoch_train_loss:.4f}")
 
         # --- 3. Validation Phase ---
 
@@ -160,8 +165,8 @@ def train(model, train_loader, val_loader, epochs, learning_rate, device,
         if val_loader and (epoch + 1) % val_frequency == 0:
             avg_val_loss, accuracy, correct, total = evaluate(model, val_loader, device, criterion)
             
-            logging.info(log_prefix + f"--- Epoch {epoch+1}/{epochs} VALIDATION ---")
-            logging.info(log_prefix + f"Validation Loss: {avg_val_loss:.4f} | "
+            log.info(log_prefix + f"--- Epoch {epoch+1}/{epochs} VALIDATION ---")
+            log.info(log_prefix + f"Validation Loss: {avg_val_loss:.4f} | "
                          f"Validation Acc: {accuracy:.2f}% ({correct}/{total})")
             history.append({
                 'epoch': epoch + 1,
@@ -171,10 +176,10 @@ def train(model, train_loader, val_loader, epochs, learning_rate, device,
             })
         
         elif val_loader:
-            logging.info(log_prefix + f"Epoch {epoch+1}/{epochs} training complete (validation skipped).")
+            log.info(log_prefix + f"Epoch {epoch+1}/{epochs} training complete (validation skipped).")
 
         else:
-            logging.info(log_prefix + f"Epoch {epoch+1}/{epochs} training complete (no validation).")
+            log.info(log_prefix + f"Epoch {epoch+1}/{epochs} training complete (no validation).")
 
         # Always push training metrics to history, even without validation
         history.append({
@@ -184,5 +189,5 @@ def train(model, train_loader, val_loader, epochs, learning_rate, device,
             'val_acc': val_acc
         })
 
-    logging.info(log_prefix + "Finished Training")
+    log.info(log_prefix + "Finished Training")
     return model, history

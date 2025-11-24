@@ -26,12 +26,15 @@ class WeightExchangePayload(BaseModel):
 
 
 # --- Helper 1: Parse Incoming Requests ---
-def parse_incoming_request(context: RequestContext, reference_model: nn.Module) -> (WeightExchangePayload, dict):
+def parse_incoming_request(context: RequestContext, reference_model: nn.Module, logger=None) -> (WeightExchangePayload, dict):
     """
     Parses an incoming A2A request context to extract and deserialize
     the WeightExchangePayload and the model state_dict.
     Raises ValueError on failure.
     """
+
+    log = logger if logger else logging.getLogger() #For legacy compatability
+
     if not context.message.parts:
         raise ValueError("Request message has no parts")
     
@@ -49,17 +52,19 @@ def parse_incoming_request(context: RequestContext, reference_model: nn.Module) 
             request_data.payload_b64, reference_model
         )
         if not payload_state_dict:
-            logging.warning(f"RESPONDER: Warning - Payload present but failed to deserialize from {request_data.agent_id}")
+            log.warning(f"RESPONDER: Warning - Payload present but failed to deserialize from {request_data.agent_id}")
     else:
-        logging.info(f"RESPONDER: Received text-only message from {request_data.agent_id}: {request_data.message}")
+        log.info(f"RESPONDER: Received text-only message from {request_data.agent_id}: {request_data.message}")
     return request_data, payload_state_dict
 
 
 # --- Helper 2: Send a Response ---
-async def send_a2a_response(event_queue: EventQueue, response_payload: WeightExchangePayload):
+async def send_a2a_response(event_queue: EventQueue, response_payload: WeightExchangePayload, logger=None):
     """
     Builds and enqueues an A2A response message.
     """
+    log = logger if logger else logging.getLogger()
+
     try:
         response_data_part = DataPart(data=response_payload.model_dump())
         response_part = Part(root=response_data_part)
@@ -69,7 +74,7 @@ async def send_a2a_response(event_queue: EventQueue, response_payload: WeightExc
             messageId=uuid4().hex
         )
         await event_queue.enqueue_event(response_message)
-        logging.info(f"RESPONDER: Sent responder payload for agent {response_payload.agent_id}.")
+        log.info(f"RESPONDER: Sent responder payload for agent {response_payload.agent_id}.")
     except Exception as e:
         # Re-raise to be caught by the executor
         raise ValueError(f"Failed to build or enqueue response message: {e}")
@@ -78,13 +83,16 @@ async def send_a2a_response(event_queue: EventQueue, response_payload: WeightExc
 # --- Helper 3: Send a Message and Parse Response ---
 async def send_and_parse_a2a_message(client: A2AClient, 
                                      request_payload: WeightExchangePayload, 
-                                     reference_model: nn.Module) -> (WeightExchangePayload, dict):
+                                     reference_model: nn.Module,
+                                     logger=None) -> (WeightExchangePayload, dict):
     """
     Sends an A2A message, parses the complex response, and returns
     the deserialized WeightExchangePayload and model state_dict.
     Raises exceptions on failure.
     """
-    logging.info(f"INITIATOR: Sending initiator payload from {request_payload.agent_id}...")
+    log = logger if logger else logging.getLogger()
+
+    log.info(f"INITIATOR: Sending initiator payload from {request_payload.agent_id}...")
     
     # 1. Build request
     message_part_data = {
@@ -132,7 +140,7 @@ async def send_and_parse_a2a_message(client: A2AClient,
     
     # Case A: The Partner is BUSY
     if response_data.message == "BUSY":
-        logging.info(f"INITIATOR: Partner {response_data.agent_id} signaled BUSY.")
+        log.info(f"INITIATOR: Partner {response_data.agent_id} signaled BUSY.")
         return response_data, None
 
     # Case B: The Partner sent weights
@@ -145,9 +153,9 @@ async def send_and_parse_a2a_message(client: A2AClient,
              # Only raise error if payload WAS provided but failed
             raise ValueError("Received corrupt payload from responder")
             
-        logging.info(f"INITIATOR: Received valid weights from {response_data.agent_id}")
+        log.info(f"INITIATOR: Received valid weights from {response_data.agent_id}")
     else:
         # Case C: Text-only response (e.g., just a chat message)
-        logging.info(f"INITIATOR: Received text-only response from {response_data.agent_id}")
+        log.info(f"INITIATOR: Received text-only response from {response_data.agent_id}")
 
     return response_data, responder_state_dict

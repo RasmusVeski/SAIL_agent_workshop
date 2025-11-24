@@ -23,7 +23,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.
 from utils.model import FoodClassifier
 from utils.data_loader import create_dataloader
 from utils.training import evaluate
-from utils.logger_setup import setup_logging
+from utils.logger_colored import setup_logging
 from utils.a2a_helpers import WeightExchangePayload
 
 load_dotenv()
@@ -66,8 +66,7 @@ def auto_tune_mtu():
         logging.warning(f"⚠️ Failed to set MTU: {e}")
 
 async def on_startup():
-    log_file = f"agent_{AGENT_ID.lower()}.log"
-    setup_logging(log_dir="logs", log_file=log_file)
+    setup_logging(log_dir="logs", agent_id=AGENT_ID)
     
     # Fix Network
     auto_tune_mtu()

@@ -10,9 +10,11 @@ from langchain_core.messages import HumanMessage
 # Local Imports
 from services.agents.collaborative.state import AgentState, NUM_ROUNDS
 from services.agents.collaborative.initiator_graph import initiator_graph
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+from utils.logger_colored import get_specialized_logger
 
 async def initiator_loop(state: AgentState, partner_urls: list):
-    logging.info(f"--- {state.agent_id} | INITIATOR STARTING ---")
+    logger = get_specialized_logger("initiator", agent_id=state.agent_id)
     
     # Populate state with available partners from config
     state.available_partners = partner_urls
@@ -23,7 +25,7 @@ async def initiator_loop(state: AgentState, partner_urls: list):
     # We create the httpx client ONCE here and share it via Singleton.
     # The 'select_partner' tool will use this to build A2A clients.
     for round_num in range(NUM_ROUNDS):
-        logging.info(f"\n--- {state.agent_id} | Initiator Wakeup {round_num + 1}/{NUM_ROUNDS} ---")
+        logger.info(f"\n--- {state.agent_id} | Initiator Wakeup {round_num + 1}/{NUM_ROUNDS} ---")
         
         async with httpx.AsyncClient(timeout=timeouts) as httpx_client:
             state.shared_httpx_client = httpx_client
@@ -34,26 +36,26 @@ async def initiator_loop(state: AgentState, partner_urls: list):
             inputs = {"messages": [HumanMessage(content="Wake up. Evaluate status and execute a round.")]}
             
             try:
-                logging.info("INITIATOR: Invoking Agent Brain...")
+                logger.info("Invoking Agent Brain...")
                 await initiator_graph.ainvoke(inputs)
-                logging.info("INITIATOR: Agent Brain finished processing.")
+                logger.info("Agent Brain finished processing.")
             except Exception as e:
-                logging.error(f"INITIATOR: Graph execution failed: {e}", exc_info=True)
+                logger.error(f"Graph execution failed: {e}", exc_info=True)
             
             # Cleanup Scratchpads
             state.initiator_working_weights = None
             state.initiator_incoming_payload = None
             
             # Wait before next wake up
-            logging.info(f"INITIATOR: Round complete. Sleeping...")
+            logger.info(f"Round complete. Sleeping...")
             await asyncio.sleep(10)
     
-    logging.info(f"--- {state.agent_id} | INITIATOR FINISHED ---")
+    logger.info(f"--- {state.agent_id} | INITIATOR FINISHED ---")
 
 def run_initiator_in_thread(state: AgentState, partner_urls: list):
-    logging.info("INITIATOR: Starting initiator thread...")
+    logging.info("Starting initiator thread...")
     time.sleep(10) 
     try:
         asyncio.run(initiator_loop(state, partner_urls))
     except Exception as e:
-        logging.error(f"INITIATOR: Initiator loop crashed: {e}", exc_info=True)
+        logging.error(f"Initiator loop crashed: {e}", exc_info=True)
