@@ -45,44 +45,51 @@ class ColoredFormatter(logging.Formatter):
 
 def setup_logging(log_dir="logs", agent_id="agent"):
     """
-    Sets up:
-    1. Root Logger (System) -> Console (Colored) + Main File
-    2. Initiator Logger -> Console (Colored) + Main File + Initiator File
-    3. Responder Logger -> Console (Colored) + Main File + Responder File
+    Sets up logging and archives ALL previous logs (main, initiator, responder)
+    with a synchronized timestamp.
     """
     
     os.makedirs(log_dir, exist_ok=True)
     archive_dir = os.path.join(log_dir, "archive")
     os.makedirs(archive_dir, exist_ok=True)
 
-    # --- 1. Define Formatters ---
-    # File formatter (clean, no colors)
+    # --- 1. Synchronized Archiving ---
+    # We archive ALL potential log files now, so they get the same timestamp
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    log_files_to_archive = [
+        f"{agent_id}_main.log",
+        f"{agent_id}_initiator.log",
+        f"{agent_id}_responder.log"
+    ]
+    
+    for filename in log_files_to_archive:
+        file_path = os.path.join(log_dir, filename)
+        _archive_if_exists(file_path, archive_dir, timestamp)
+
+    # --- 2. Define Formatters ---
     file_fmt = logging.Formatter("%(asctime)s [%(name)s] %(levelname)s: %(message)s")
-    # Console formatter (colored)
     console_fmt = ColoredFormatter("%(asctime)s [%(name)s] %(levelname)s: %(message)s", "%H:%M:%S")
 
-    # --- 2. Configure Root Logger (System) ---
+    # --- 3. Configure Root Logger (System) ---
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
     
-    # Clear existing handlers (to avoid duplicates on reload)
     if root_logger.hasHandlers():
         root_logger.handlers.clear()
 
-    # Console Handler (Standard Out)
+    # Console Handler
     ch = logging.StreamHandler(sys.stdout)
     ch.setFormatter(console_fmt)
     root_logger.addHandler(ch)
 
-    # Main Log File (Everything goes here)
+    # Main Log File
     main_log_path = os.path.join(log_dir, f"{agent_id}_main.log")
-    _archive_if_exists(main_log_path, archive_dir)
-    
     fh_main = logging.FileHandler(main_log_path, mode='w')
     fh_main.setFormatter(file_fmt)
     root_logger.addHandler(fh_main)
     
-    logging.info(f"--- Logging Setup Complete. Main log: {main_log_path} ---")
+    logging.info(f"--- Logging Setup Complete. Archived old logs to {archive_dir} ---")
 
 def get_specialized_logger(name, log_dir="logs", agent_id="agent"):
     """
@@ -104,12 +111,11 @@ def get_specialized_logger(name, log_dir="logs", agent_id="agent"):
 
     return logger
 
-def _archive_if_exists(file_path, archive_dir):
+def _archive_if_exists(file_path, archive_dir, timestamp):
     if os.path.exists(file_path):
         try:
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             base_name = os.path.basename(file_path)
             new_name = f"{timestamp}_{base_name}"
             os.rename(file_path, os.path.join(archive_dir, new_name))
         except Exception as e:
-            print(f"Could not archive log: {e}")
+            print(f"Could not archive log {file_path}: {e}")

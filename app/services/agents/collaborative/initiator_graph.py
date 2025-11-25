@@ -82,9 +82,6 @@ async def select_partner_agent():
         logger.info(f"Resolving card for {target_url}...")
         card = await resolver.get_agent_card()
         config = ClientConfig(httpx_client=state_singleton.shared_httpx_client)
-
-        current_timeout = config.httpx_client.timeout.read
-        logger.info(f"DEBUG: A2A Client configured with timeout: {current_timeout}s")
         client = await ClientFactory.connect(agent=card, client_config=config)
         
         state_singleton.active_client = client
@@ -426,28 +423,8 @@ async def agent_node(state: GraphState):
     messages = [SystemMessage(content=sop)] + state["messages"]
     response = await llm_with_tools.ainvoke(messages)
 
-    if "reasoning_content" in response.additional_kwargs:
-        logger.info(f"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        r_content = response.additional_kwargs["reasoning_content"]
-        if r_content:
-            # Clean up newlines for single-line logging
-            clean_r = str(r_content).replace("\n", " ").strip()
-            logger.info(f"INITIATOR: [DEEP REASONING] {clean_r}")
-
-    # 2. Check for Standard Content (Llama 3 / GPT-4 style)
-    if response.content:
-        logger.info(f"BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")
-        text = str(response.content).replace("\n", " ").strip()
-        if text:
-            # If the agent is calling tools, the text is usually "Reasoning/Thoughts"
-            if response.tool_calls:
-                logger.info(f"INITIATOR: [THOUGHT] {text}")
-            # If NO tools are called, this is the final "Message" to the partner
-            else:
-                logger.info(f"INITIATOR: [MESSAGE] {text}")
-
-    print(response.content)
-
+    #import json
+    #logger.error(f"FULL RESPONSE DUMP: {json.dumps(response.dict(), indent=2)}")
 
     return {"messages": [response]}
 
