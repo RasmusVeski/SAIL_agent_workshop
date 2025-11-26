@@ -113,36 +113,3 @@ def _blocking_commit_logic(state: AgentState, draft_payload: dict, alpha: float 
         model_to_eval = copy.deepcopy(state.global_model)
         
     return new_round_num, model_to_eval
-
-
-
-
-# def _blocking_merge_logic(state: AgentState, payload_1: dict, payload_2: dict):
-#     """
-#     Synchronous function that holds the lock and updates the model.
-#     Safe to run in a thread.
-#     """
-#     with state.model_lock:
-#         # 1. Merge the two NEW payloads (The consensus of this specific round)
-#         # We weight them 50/50 between the two partners
-#         exchange_merge = merge_payloads(payload_1, payload_2, alpha=0.5)
-        
-#         # 2. Get the CURRENT global model state
-#         current_global_payload = get_trainable_state_dict(state.global_model)
-
-#         # 3. Merge the Exchange Result with the Current Global Model
-#         # 20% Current Global (Anchor) + 80% New Exchange (Progress)
-#         # This is for not completely overwriting results from the other thread, but only take 20%
-#         final_merge = merge_payloads(current_global_payload, exchange_merge, alpha=0.2)
-
-#         # 4. Update global model
-#         update_global_model(state.global_model, final_merge)
-        
-#         # 5. Increment round
-#         state.round_num += 1 
-#         new_round_num = state.round_num
-        
-#         # 6. Deepcopy for eval (so we can evaluate without holding the lock)
-#         model_to_eval = copy.deepcopy(state.global_model)
-        
-#     return new_round_num, model_to_eval

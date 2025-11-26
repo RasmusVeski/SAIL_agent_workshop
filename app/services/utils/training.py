@@ -75,8 +75,8 @@ def evaluate(model, val_loader, device, criterion, logger=None):
         else:
             accuracies.append(0.0)
     macro_avg_acc = np.mean(accuracies)
-    # Count how many classes have > 0% accuracy (Knowledge Width)
-    classes_learned = sum(1 for acc in accuracies if acc > 0.0)
+    # Count how many classes have > 10% accuracy (Knowledge Width) i.e. 5 images of class correctly classified
+    classes_learned = sum(1 for acc in accuracies if acc > 10.0)
     log.info(f"[Eval Details] Macro-Avg Acc: {macro_avg_acc:.2f}% | Classes Learned: {classes_learned}/{NUM_CLASSES}")
 
     return avg_loss, overall_accuracy, correct, total_samples, classes_learned
