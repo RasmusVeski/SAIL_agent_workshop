@@ -90,11 +90,6 @@ async def on_startup():
 
     state_singleton.global_model = FoodClassifier()
     state_singleton.criterion = torch.nn.CrossEntropyLoss()
-    
-    val_loss, val_acc, _, _, nr_classes= evaluate(
-        state_singleton.global_model, state_singleton.val_loader, state_singleton.device, state_singleton.criterion
-    )
-    logging.info(f"Round 0 Initial Accuracy: {val_acc:.2f}%, nr classes {nr_classes}")
 
     if PARTNER_URLS:
         partner_url_to_use = PARTNER_URLS[0]

@@ -307,6 +307,14 @@ async def agent_node(state: GraphState):
     llm_with_tools = llm.bind_tools(tools)
 
     history_str = state_singleton.get_formatted_history()
+
+    # We look at the message history. If the last message was a ToolMessage,
+    # it means we just finished an action (like exchanging weights).
+    # We want the LLM to see exactly what that action returned.
+    last_action_result = "None"
+    if state["messages"] and isinstance(state["messages"][-1], ToolMessage):
+        last_action_result = state["messages"][-1].content
+
     current_hps = state_singleton.agent_hps
     hp_str = "\n".join([f"- {k}: {v}" for k, v in current_hps.items()])
 
@@ -324,6 +332,9 @@ async def agent_node(state: GraphState):
     
     **Current Config:**
     {hp_str}
+
+    ** Previous action result:**
+    "{last_action_result}"
     
     **History:**
     {history_str}
