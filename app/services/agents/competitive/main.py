@@ -66,7 +66,7 @@ def auto_tune_mtu():
         logging.warning(f"⚠️ Failed to set MTU: {e}")
 
 async def on_startup():
-    setup_logging(log_dir="logs", agent_id=AGENT_ID)
+    setup_logging(log_dir="logs", agent_id=AGENT_ID, mode="competitive")
     
     # Fix Network
     auto_tune_mtu()

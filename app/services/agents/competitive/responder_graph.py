@@ -397,11 +397,11 @@ tools = [train_local_model,
          merge_with_partner,
          evaluate_model,
          commit_to_global_model, 
-        update_training_parameters,
-        prepare_poisoned_payload,
-        prepare_empty_payload,
-        evaluate_peer,
-        add_peer_to_malicious_nodes
+         update_training_parameters,
+         prepare_poisoned_payload,
+         prepare_empty_payload,
+         evaluate_peer,
+         add_peer_to_malicious_nodes
         ]
 
 async def agent_node(state: GraphState):

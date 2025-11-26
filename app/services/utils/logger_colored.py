@@ -4,6 +4,10 @@ import os
 import datetime
 import copy
 
+# --- Global State for Logging Mode ---
+# Defaults to "agent" if not set via setup_logging
+_LOG_MODE = "agent"
+
 # --- ANSI Color Codes ---
 class Colors:
     RESET = "\033[0m"
@@ -43,11 +47,14 @@ class ColoredFormatter(logging.Formatter):
         
         return super().format(record)
 
-def setup_logging(log_dir="logs", agent_id="agent"):
+def setup_logging(log_dir="logs", agent_id="agent", mode="general"):
     """
     Sets up logging and archives ALL previous logs (main, initiator, responder)
     with a synchronized timestamp.
     """
+
+    global _LOG_MODE
+    _LOG_MODE = mode # Store for get_specialized_logger to use later
     
     os.makedirs(log_dir, exist_ok=True)
     archive_dir = os.path.join(log_dir, "archive")
@@ -58,9 +65,9 @@ def setup_logging(log_dir="logs", agent_id="agent"):
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     
     log_files_to_archive = [
-        f"{agent_id}_main.log",
-        f"{agent_id}_initiator.log",
-        f"{agent_id}_responder.log"
+        f"{agent_id}_{mode}_main.log",
+        f"{agent_id}_{mode}_initiator.log",
+        f"{agent_id}_{mode}_responder.log"
     ]
     
     for filename in log_files_to_archive:
@@ -84,12 +91,12 @@ def setup_logging(log_dir="logs", agent_id="agent"):
     root_logger.addHandler(ch)
 
     # Main Log File
-    main_log_path = os.path.join(log_dir, f"{agent_id}_main.log")
+    main_log_path = os.path.join(log_dir, f"{agent_id}_{mode}_main.log")
     fh_main = logging.FileHandler(main_log_path, mode='w')
     fh_main.setFormatter(file_fmt)
     root_logger.addHandler(fh_main)
     
-    logging.info(f"--- Logging Setup Complete. Archived old logs to {archive_dir} ---")
+    logging.info(f"--- Logging Setup Complete. Mode: {mode}. Logs: {main_log_path} ---")
 
 def get_specialized_logger(name, log_dir="logs", agent_id="agent"):
     """
@@ -101,11 +108,11 @@ def get_specialized_logger(name, log_dir="logs", agent_id="agent"):
     logger.propagate = True # Let it bubble up to Root (for Console + Main Log)
 
     # Unique File Handler for this logger
-    log_file = os.path.join(log_dir, f"{agent_id}_{name}.log")
+    log_file = os.path.join(log_dir, f"{agent_id}_{_LOG_MODE}_{name}.log")
     
     # Check if handler already exists to avoid duplicates
     if not any(isinstance(h, logging.FileHandler) and h.baseFilename == os.path.abspath(log_file) for h in logger.handlers):
-        fh = logging.FileHandler(log_file, mode='a') # Append mode so we don't wipe it every round
+        fh = logging.FileHandler(log_file, mode='w') 
         fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s: %(message)s"))
         logger.addHandler(fh)
 
