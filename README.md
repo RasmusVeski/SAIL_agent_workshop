@@ -21,7 +21,7 @@ git clone https://github.com/RasmusVeski/SAIL_agent_hackathon.git
 cd SAIL_agent_hackathon
 ```
 
-Create a `.env` file in the root directory. You can copy the example below:
+Create a `.env` file in the root directory. You can copy use the .env.example as template or the example below:
 
 ```bash
 # .env file
