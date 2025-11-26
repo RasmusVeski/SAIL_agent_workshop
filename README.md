@@ -50,14 +50,25 @@ Build the image **once**:
 docker build -t agent-image .
 ```
 
-### 5. Running the Agents
-We use Docker's `ENTRYPOINT` pattern. You can switch between different agent modes by appending the script path to the run command.
+### 5. Baselines-Data exploration
+
+* **Discover local data split**
+    * *Goal:* See how what types of classes and how many samples you have.
+    ```bash
+    docker run -it --rm \
+        --name data_check \
+        -v ./app:/app \
+        -v ./app/sharded_data:/app/sharded_data \
+        --env-file ./.env \
+        agent-image:latest \
+        analyze_local_data.py
+    ```
 
 * **Run the Local Benchmark (Baseline)**
     * *Goal:* See how well the model performs purely on local data.
     ```bash
     docker run -it --rm \
-        --name agent_benchmark \
+        --name local_benchmark \
         --privileged \
         -v ./app:/app \
         -v ./app/sharded_data:/app/sharded_data \
@@ -81,11 +92,15 @@ We use Docker's `ENTRYPOINT` pattern. You can switch between different agent mod
         services/agents/without_llm/main.py
     ```
 
+
+### 6. Experiments
+We use Docker's `ENTRYPOINT` pattern. You can switch between different agent modes by appending the script path to the run command.
+
 * **Run the Collaborative Agent (LLM-Driven)**
-    * *Goal:* The main experiment. Agents cooperate to improve accuracy.
+    * *Goal:* Agents cooperate to improve accuracy.
     ```bash
     docker run -it --rm \
-        --name agent_benchmark \
+        --name agent_collaborative \
         --privileged \
         -v ./app:/app \
         -v ./app/sharded_data:/app/sharded_data \
@@ -93,6 +108,20 @@ We use Docker's `ENTRYPOINT` pattern. You can switch between different agent mod
         --env-file ./.env \
         agent-image:latest \
         services/agents/collaborative/main.py
+    ```
+
+* **Run the Competitive Agent (LLM-Driven)**
+    * *Goal:* Agents try to only to be better than other agents
+    ```bash
+    docker run -it --rm \
+        --name agent_competitive \
+        --privileged \
+        -v ./app:/app \
+        -v ./app/sharded_data:/app/sharded_data \
+        -v ./logs:/app/logs \
+        --env-file ./.env \
+        agent-image:latest \
+        services/agents/competitive/main.py
     ```
 
 ---
