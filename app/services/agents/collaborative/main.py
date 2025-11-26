@@ -112,7 +112,7 @@ if __name__ == '__main__':
     )
 
     public_agent_card = AgentCard(
-        name=f'Federated Learning Agent ({AGENT_ID})',
+        name=f'{AGENT_ID}',
         description='An agent that participates in federated learning.',
         url=PUBLIC_URL,
         version='1.0.0',

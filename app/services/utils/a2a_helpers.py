@@ -24,6 +24,9 @@ class WeightExchangePayload(BaseModel):
     payload_b64: str = ""
     message: str
 
+def _get_logger(logger=None):
+    """Helper to ensure we always have a logger instance."""
+    return logger if logger else logging.getLogger()
 
 # --- Helper 1: Parse Incoming Requests ---
 def parse_incoming_request(context: RequestContext, reference_model: nn.Module, logger=None) -> (WeightExchangePayload, dict):
@@ -33,7 +36,7 @@ def parse_incoming_request(context: RequestContext, reference_model: nn.Module, 
     Raises ValueError on failure.
     """
 
-    log = logger if logger else logging.getLogger() #For legacy compatability
+    log = _get_logger(logger)
 
     if not context.message.parts:
         raise ValueError("Request message has no parts")
@@ -63,7 +66,7 @@ async def send_a2a_response(event_queue: EventQueue, response_payload: WeightExc
     """
     Builds and enqueues an A2A response message.
     """
-    log = logger if logger else logging.getLogger()
+    log = _get_logger(logger)
 
     try:
         response_data_part = DataPart(data=response_payload.model_dump())
@@ -74,7 +77,7 @@ async def send_a2a_response(event_queue: EventQueue, response_payload: WeightExc
             messageId=uuid4().hex
         )
         await event_queue.enqueue_event(response_message)
-        log.info(f"RESPONDER: Sent responder payload for agent {response_payload.agent_id}.")
+        log.info(f"RESPONDER: Sent responder payload to agent {response_payload.agent_id}.")
     except Exception as e:
         # Re-raise to be caught by the executor
         raise ValueError(f"Failed to build or enqueue response message: {e}")
@@ -90,9 +93,10 @@ async def send_and_parse_a2a_message(client: A2AClient,
     the deserialized WeightExchangePayload and model state_dict.
     Raises exceptions on failure.
     """
-    log = logger if logger else logging.getLogger()
+    log = _get_logger(logger)
 
-    log.info(f"INITIATOR: Sending initiator payload from {request_payload.agent_id}...")
+    target_name = client._card.name if hasattr(client, '_card') else "Unknown Partner"
+    log.info(f"INITIATOR: Sending initiator payload from {request_payload.agent_id} to {target_name}...")
     
     # 1. Build request
     message_part_data = {
