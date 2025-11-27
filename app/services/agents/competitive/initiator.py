@@ -10,8 +10,8 @@ from langchain_core.messages import HumanMessage
 # Local Imports
 from services.agents.competitive.state import AgentState, NUM_ROUNDS
 from services.agents.competitive.initiator_graph import initiator_graph
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-from utils.logger_colored import get_specialized_logger
+# Utils
+from services.utils.logger_colored import get_specialized_logger
 
 async def initiator_loop(state: AgentState, partner_urls: list):
     logger = get_specialized_logger("initiator", agent_id=state.agent_id)

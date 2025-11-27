@@ -14,10 +14,9 @@ from a2a.utils import new_agent_text_message
 from services.agents.without_llm.state import AgentState, thread_safe_merge_and_evaluate
 
 # Utils
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-from utils.training import train
-from utils.payload_utils import get_trainable_state_dict, serialize_payload_to_b64
-from utils.a2a_helpers import (
+from services.utils.training import train
+from services.utils.payload_utils import get_trainable_state_dict, serialize_payload_to_b64
+from services.utils.a2a_helpers import (
     WeightExchangePayload,
     parse_incoming_request,
     send_a2a_response

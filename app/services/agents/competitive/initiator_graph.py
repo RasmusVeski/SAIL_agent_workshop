@@ -23,12 +23,11 @@ from a2a.client import A2ACardResolver, ClientFactory, ClientConfig
 from services.agents.competitive.state import state_singleton, blocking_commit
 
 # --- Utils ---
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-from utils.training import train, evaluate
-from utils.federated_utils import merge_payloads
-from utils.payload_utils import get_trainable_state_dict, serialize_payload_to_b64, deserialize_payload_from_b64
-from utils.a2a_helpers import WeightExchangePayload, send_and_parse_a2a_message
-from utils.logger_colored import get_specialized_logger
+from services.utils.training import train, evaluate
+from services.utils.federated_utils import merge_payloads
+from services.utils.payload_utils import get_trainable_state_dict, serialize_payload_to_b64, deserialize_payload_from_b64
+from services.utils.a2a_helpers import WeightExchangePayload, send_and_parse_a2a_message
+from services.utils.logger_colored import get_specialized_logger
 
 # --- 1. The Graph State ---
 class GraphState(TypedDict):

@@ -22,11 +22,10 @@ from services.agents.competitive.state import state_singleton, blocking_commit
 # (We import the singleton because tools need access to the GLOBAL weights)
 
 # --- Utils ---
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-from utils.training import train, evaluate
-from utils.federated_utils import merge_payloads
-from utils.payload_utils import get_trainable_state_dict, deserialize_payload_from_b64
-from utils.logger_colored import get_specialized_logger
+from services.utils.training import train, evaluate
+from services.utils.federated_utils import merge_payloads
+from services.utils.payload_utils import get_trainable_state_dict, deserialize_payload_from_b64
+from services.utils.logger_colored import get_specialized_logger
 
 # --- 1. The Graph State ---
 # This tracks the *conversation* and the *request context*, not the model weights.

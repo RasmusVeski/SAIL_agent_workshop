@@ -6,12 +6,10 @@ import asyncio
 import os
 import sys
 
-# Adjust path to find utils
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-
-from utils.federated_utils import merge_payloads, update_global_model
-from utils.payload_utils import get_trainable_state_dict
-from utils.training import evaluate
+# Utils
+from services.utils.federated_utils import merge_payloads, update_global_model
+from services.utils.payload_utils import get_trainable_state_dict
+from services.utils.training import evaluate
 
 # --- Configuration Constants ---
 NUM_ROUNDS = 20
@@ -90,7 +88,7 @@ class AgentState:
 # The Global Singleton
 state_singleton = AgentState()
 
-def _blocking_commit_logic(state: AgentState, draft_payload: dict, alpha: float = 0.2):
+def blocking_commit(state: AgentState, draft_payload: dict, alpha: float = 0.2):
     """
     Commits the 'Draft' (working weights) to the Global Model.
     

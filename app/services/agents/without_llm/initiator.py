@@ -12,10 +12,9 @@ from a2a.client import A2ACardResolver, ClientFactory, ClientConfig, A2AClient
 from services.agents.without_llm.state import AgentState, NUM_ROUNDS, thread_safe_merge_and_evaluate
 
 # Utils
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-from utils.training import train
-from utils.payload_utils import get_trainable_state_dict, serialize_payload_to_b64
-from utils.a2a_helpers import WeightExchangePayload, send_and_parse_a2a_message
+from services.utils.training import train
+from services.utils.payload_utils import get_trainable_state_dict, serialize_payload_to_b64
+from services.utils.a2a_helpers import WeightExchangePayload, send_and_parse_a2a_message
 
 async def get_partner_client(httpx_client: httpx.AsyncClient, partner_url: str) -> A2AClient | None:
     resolver = A2ACardResolver(httpx_client=httpx_client, base_url=partner_url)

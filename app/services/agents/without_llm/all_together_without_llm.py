@@ -44,20 +44,17 @@ from a2a.types import (
 from a2a.utils import new_agent_text_message
 
 # --- Utility Imports ---
-# Add the 'services' directory to the Python path to allow imports like 'utils.model'
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-
-from utils.model import FoodClassifier
-from utils.data_loader import create_dataloader
-from utils.training import train, evaluate
-from utils.logger_setup import setup_logging
-from utils.federated_utils import merge_payloads, update_global_model
-from utils.payload_utils import (
+from services.utils.model import FoodClassifier
+from services.utils.data_loader import create_dataloader
+from services.utils.training import train, evaluate
+from services.utils.logger_setup import setup_logging
+from services.utils.federated_utils import merge_payloads, update_global_model
+from services.utils.payload_utils import (
     get_trainable_state_dict, 
     serialize_payload_to_b64, 
     deserialize_payload_from_b64
 )
-from utils.a2a_helpers import (
+from services.utils.a2a_helpers import (
     WeightExchangePayload,
     parse_incoming_request,
     send_a2a_response,

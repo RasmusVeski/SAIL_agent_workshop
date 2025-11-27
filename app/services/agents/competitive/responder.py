@@ -15,14 +15,13 @@ from services.agents.competitive.state import AgentState, state_singleton
 from services.agents.competitive.responder_graph import responder_graph
 
 # Utils
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-from utils.payload_utils import serialize_payload_to_b64, get_trainable_state_dict
-from utils.a2a_helpers import (
+from services.utils.payload_utils import serialize_payload_to_b64, get_trainable_state_dict
+from services.utils.a2a_helpers import (
     WeightExchangePayload,
     parse_incoming_request,
     send_a2a_response
 )
-from utils.logger_colored import get_specialized_logger
+from services.utils.logger_colored import get_specialized_logger
 
 class CompetitiveResponderExecutor(AgentExecutor):
     

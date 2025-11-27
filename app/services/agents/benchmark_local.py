@@ -6,11 +6,11 @@ from dotenv import load_dotenv
 
 # --- 1. Path Setup (To import from utils) ---
 # We need to go up two levels from services/agents/ to reach app/
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+#sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from utils.model import FoodClassifier
-from utils.data_loader import create_dataloader
-from utils.training import train, evaluate
+from services.utils.model import FoodClassifier
+from services.utils.data_loader import create_dataloader
+from services.utils.training import train, evaluate
 
 # --- 2. Configuration ---
 load_dotenv()

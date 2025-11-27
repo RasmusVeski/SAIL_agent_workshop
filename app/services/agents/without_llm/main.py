@@ -19,12 +19,11 @@ from services.agents.without_llm.responder import FederatedAgentExecutor
 from services.agents.without_llm.initiator import run_initiator_in_thread
 
 # --- Utils ---
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-from utils.model import FoodClassifier
-from utils.data_loader import create_dataloader
-from utils.training import evaluate
-from utils.logger_setup import setup_logging
-from utils.a2a_helpers import WeightExchangePayload
+from services.utils.model import FoodClassifier
+from services.utils.data_loader import create_dataloader
+from services.utils.training import evaluate
+from services.utils.logger_setup import setup_logging
+from services.utils.a2a_helpers import WeightExchangePayload
 
 load_dotenv()
 

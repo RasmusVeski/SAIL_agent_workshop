@@ -6,12 +6,9 @@ import asyncio
 import os
 import sys
 
-# Adjust path to find utils
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-
-from utils.federated_utils import merge_payloads, update_global_model
-from utils.payload_utils import get_trainable_state_dict
-from utils.training import evaluate
+from services.utils.federated_utils import merge_payloads, update_global_model
+from services.utils.payload_utils import get_trainable_state_dict
+from services.utils.training import evaluate
 
 # --- Configuration Constants ---
 NUM_ROUNDS = 20
