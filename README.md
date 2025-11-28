@@ -148,19 +148,20 @@ These files handle the heavy lifting. You generally **do not** need to edit thes
 
 * **`app/services/utils/`**:
     * `training.py`: Contains the PyTorch training loop and evaluation logic.
-    * `federated_utils.py`: Handles merging weights (`FedAvg` logic).
+    * `federated_utils.py`: Handles merging weights (FedAvg logic).
     * `a2a_helpers.py`: Manages sending messages between two agents using A2A.
-    * `logger_colored.py`: Provides the beautiful color-coded logs for debugging.
+    * `logger_colored.py`: Sets up logging parameters for general, initiator, responder.
     * `payload_utils.py`: Logic for extracting and serializing trainable state dicts from the trained model.
 
 ---
 
-## Building your agents: important notes
+## Building your agents
 
 ### Given tools
 In both `initiator_graph.py` and `responder_graph.py` you will already see a couple tools implemented. Read their docstring to understand their purpose. These tools are tied to the LLM and the primary way you can improve your agents is making more tools or editing existing ones.
 
 ### Important variables
-In `state.py` you will see many global variables. Read the comment next to 
+In `state.py` you will see many global variables. Read the comment next to it to understand its meaning
 
-### Agent node
+### Useful utils
+Check file utils_documentation.md for functions that will be of use when making agentic workflows.
