@@ -164,4 +164,4 @@ In both `initiator_graph.py` and `responder_graph.py` you will already see a cou
 In `state.py` you will see many global variables. Read the comment next to it to understand its meaning
 
 ### Useful utils
-Check file utils_documentation.md for functions that will be of use when making agentic workflows.
+Check `file utils_documentation.md` for functions that will be of use when making agentic workflows.
