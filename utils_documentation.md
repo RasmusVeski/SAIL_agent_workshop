@@ -106,7 +106,7 @@ Extracts *only* the weights that need to be shared.
 def get_trainable_state_dict(model: nn.Module) -> dict
 ```
 
-* **Usage:** Call this on your model before serializing. It filters out frozen layers (like the pre-trained MobileNet backbone) to save bandwidth.
+* **Usage:** Call this on your model before serializing. It filters out frozen layers (the pre-trained MobileNet backbone) to save bandwidth.
 
 ### `serialize_payload_to_b64(...)`
 Compresses and encodes weights for network transmission.
