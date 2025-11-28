@@ -35,7 +35,7 @@ def train(
 **Key Arguments:**
 * **`model`**: The model instance to train. **Tip:** Always pass a `copy.deepcopy()` of your model, not the live reference, unless you want to modify it in place.
 * **`global_model`** & **`mu`**: These control **FedProx**.
-    * If `mu > 0.0` and `global_model` is provided, the loss function adds a penalty term: (mu / 2) * sqrt( sum_over_all_parameters( (w_i - w_i_global)^2 ) ).
+    * If `mu > 0.0` and `global_model` is provided, the loss function adds a penalty term: $(mu / 2) * sqrt( sum_over_all_parameters( (w_i - w_i_global)^2 ) )$.
     * **Strategy:** Use higher `mu` (e.g., 0.5 - 1.0) to stay close to a known good state. Use `mu=0.0` to learn new data aggressively.
 * **`epochs`**: How many passes over the local data. **Warning:** High epochs (>2) can cause network timeouts for the partner waiting on you.
 
