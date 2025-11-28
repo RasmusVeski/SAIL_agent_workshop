@@ -66,6 +66,7 @@ class CollaborativeResponderExecutor(AgentExecutor):
 
                 self.state.responder_incoming_payload = initiator_payload
                 self.state.responder_working_weights = None
+                self.state.responder_partner_id = request_data.agent_id
             except Exception as e:
                 logger.error(f"Payload deserialization failed: {e}")
                 await event_queue.enqueue_event(
@@ -74,14 +75,13 @@ class CollaborativeResponderExecutor(AgentExecutor):
                 return
             
             initial_msg = f"Partner {request_data.agent_id} sent weights. Message: {request_data.message}"
-            inputs = {
-                "messages": [HumanMessage(content=initial_msg)],
-                "partner_id": request_data.agent_id 
+            input = {
+                "messages": [HumanMessage(content=initial_msg)]
             }
 
             try:
                 logger.info("Invoking Agent Brain...")
-                final_state = await responder_graph.ainvoke(inputs)
+                final_state = await responder_graph.ainvoke(input)
                 logger.info("Agent Brain finished processing.")
             except Exception as e:
                 logger.error(f"Graph execution failed: {e}. Proceeding with fallback.")
@@ -115,6 +115,7 @@ class CollaborativeResponderExecutor(AgentExecutor):
 
             
             try:
+                logger.info(f"RESPONDER: Responding to {request_data.agent_id}.")
                 await send_a2a_response(event_queue, response_payload, logger=logger)
             except Exception as e:
                 logger.error(f"Failed to send response: {e}")

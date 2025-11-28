@@ -30,7 +30,6 @@ from services.utils.logger_colored import get_specialized_logger
 # This tracks the *conversation* and the *request context*, not the model weights.
 class GraphState(TypedDict):
     messages: Annotated[List[AnyMessage], operator.add]
-    partner_id: str
 
 logger = get_specialized_logger("responder", agent_id=state_singleton.agent_id)
 
@@ -99,13 +98,13 @@ def train_local_model():
 
 
 @tool
-def merge_with_partner(partner_id: str, merge_alpha: float = 0.5):
+def merge_with_partner(merge_alpha: float = 0.5):
     """
     Merges the Partner's incoming weights into your Local Draft.
     Does NOT update the Global Model.
     0 <= merge_alpha <= 1, the bigger the more of local model retained
     """
-    logger.info(f"[Tool] Merging with {partner_id}...")
+    logger.info(f"[Tool] Merging with {state_singleton.responder_partner_id}...")
     
     if not hasattr(state_singleton, 'incoming_payload') or not state_singleton.responder_incoming_payload:
         return "Error: No incoming payload found from partner."
@@ -142,7 +141,7 @@ def merge_with_partner(partner_id: str, merge_alpha: float = 0.5):
     history_entry = {
         "round": state_singleton.round_num,
         "role": "RESPONDER",
-        "partner": partner_id,
+        "partner": state_singleton.responder_partner_id,
         "action": f"Merged (alpha={merge_alpha})",
         "result": f"Acc: {val_acc:.2f}% (Classes: {classes_learned})"
     }
@@ -197,7 +196,7 @@ def evaluate_model():
 
 
 @tool
-def commit_to_global_model(partner_id: str):
+def commit_to_global_model():
     """
     Commits the Local Draft to the Global Model.
     This is the FINAL step. It mixes the draft with the current Global Model (Safety Anchor) and saves it.
@@ -240,7 +239,7 @@ def commit_to_global_model(partner_id: str):
     history_entry = {
         "round": new_round,
         "role": "RESPONDER",
-        "partner": partner_id, 
+        "partner": state_singleton.responder_partner_id, 
         "action": "Committed Update",
         "result": result_str
     }
@@ -320,11 +319,9 @@ async def agent_node(state: GraphState):
     current_hps = state_singleton.agent_hps
     hp_str = "\n".join([f"- {k}: {v}" for k, v in current_hps.items()])
 
-    partner = state.get("partner_id", "Unknown Partner")
-    
     # System prompt defines the standard operating procedure (SOP)
     sop = f"""You are an autonomous Federated Learning Agent (Responder).
-    You are collaborating with: **{partner}**.
+    You are collaborating with: **{state_singleton.responder_partner_id}**.
     
     **Strategic Guide:**
     1. **The Cycle:** Your most effective workflow is `train_local_model` -> `merge_with_partner` -> `evaluate_model` -> `commit_to_global_model`.

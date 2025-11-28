@@ -25,7 +25,7 @@ class AgentState:
     def __init__(self):
         self.agent_id = None
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.global_model = None # protected by `model_lock`
+        self.global_model = None # protected by `model_lock`. Sent at the end of round by responder
         self.train_loader = None
         self.val_loader = None
         self.criterion = None # CrossEntropyLoss
@@ -34,21 +34,22 @@ class AgentState:
 
         # --- Network State ---
         self.available_partners = [] # List of partner base URLs (strings) that this agent can initiate contact with.
-        self.shared_httpx_client = None # The shared HTTP client object used by both the Initiator and Responder to make requests.
+        self.shared_httpx_client = None # The shared HTTP client object used by the initiator to make requests.
 
         # --- Shared Episodic Memory ---
         # Stores dicts: {'round': 1, 'role': 'RESPONDER', 'partner': 'Agent_B', 'result': 'Acc: 10%', 'action': 'Merged'}
         self.history = [] # A chronological list of past actions, partners, and results. Used to inform the LLM's next strategic decision.
 
         # --- Thread-Specific Scratchpads ---
-        # These are temporary holders for model weights/payloads during a single P2P exchange.
+        # These are temporary holder for model weights/payloads during a single P2P exchange.
         self.responder_working_weights = None # The model weights *after* the Responder trains locally (the draft update).
         self.responder_incoming_payload = None # The model weights received *from* an Initiator partner.
+        self.responder_partner_id = None # The ID of the partner the responder is conversation with
 
         # Initiator Scratchpad
         self.initiator_working_weights = None # The model weights *after* the Initiator trains locally (the draft update).
         self.initiator_incoming_payload = None # The model weights received *from* the Responder partner.
-        self.active_client = None # The A2AClient object for the Initiator thread to use
+        self.active_client = None # The A2AClient object for the Initiator thread to use. Represents connection with partner
         self.current_partner_id = None # The ID of the partner being communicated with during the current active session.
 
         # --- Lock ---

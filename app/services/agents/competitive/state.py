@@ -45,6 +45,7 @@ class AgentState:
         # These are temporary holders for model weights/payloads during a single P2P exchange.
         self.responder_working_weights = None # The model weights *after* the Responder trains locally (the draft update).
         self.responder_incoming_payload = None # The model weights received *from* an Initiator partner.
+        self.responder_partner_id = None # The ID of the partner the responder is conversation with
         self.responder_outbound_payload = None # Stores the specific payload the Responder WANTS to send, can be poisoned
 
         # Initiator Scratchpad

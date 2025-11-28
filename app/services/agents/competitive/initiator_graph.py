@@ -586,11 +586,11 @@ async def agent_node(state: GraphState):
     """
     
     messages = [SystemMessage(content=sop)] + state["messages"]
-    #logger.error(messages) for looking at what actually goes in LLM
+    #logger.info(messages) #for looking at what actually goes in LLM
     response = await llm_with_tools.ainvoke(messages, parallel_tool_calls=False)
 
     #import json
-    #logger.error(f"FULL RESPONSE DUMP: {json.dumps(response.dict(), indent=2)}") #For looking at what comes out of LLM
+    #logger.info(f"FULL RESPONSE DUMP: {json.dumps(response.dict(), indent=2)}") #For looking at what comes out of LLM
 
     return {"messages": [response]}
 

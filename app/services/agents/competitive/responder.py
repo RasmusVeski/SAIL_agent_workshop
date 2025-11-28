@@ -69,6 +69,7 @@ class CompetitiveResponderExecutor(AgentExecutor):
 
                 self.state.responder_incoming_payload = initiator_payload
                 self.state.responder_working_weights = None
+                self.state.responder_partner_id = request_data.agent_id
             except Exception as e:
                 logger.error(f"Payload deserialization failed: {e}")
                 await event_queue.enqueue_event(
@@ -80,8 +81,7 @@ class CompetitiveResponderExecutor(AgentExecutor):
             if not initiator_payload:
                  initial_msg = f"Partner {request_data.agent_id} sent NO weights (Text Only). Message: {request_data.message}"
             inputs = {
-                "messages": [HumanMessage(content=initial_msg)],
-                "partner_id": request_data.agent_id 
+                "messages": [HumanMessage(content=initial_msg)]
             }
 
             try:
@@ -133,6 +133,7 @@ class CompetitiveResponderExecutor(AgentExecutor):
 
             
             try:
+                logger.info(f"RESPONDER: Responding to {request_data.agent_id}.")
                 await send_a2a_response(event_queue, response_payload, logger=logger)
             except Exception as e:
                 logger.error(f"Failed to send response: {e}")

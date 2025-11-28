@@ -173,7 +173,10 @@ async def exchange_weights_with_partner(message_to_partner: str = "Starting exch
         # Check 2: Did they just send a chat message without weights?
         if responder_payload is None:
             state_singleton.initiator_incoming_payload = None
-            return f"Partner replied, but sent no weights. Message: '{response_data.message}'"
+            # New explicit message for the LLM
+            msg = f"ALERT: {response_data.agent_id} replied but sent NO VALID WEIGHTS. Message: '{response_data.message}'"
+            logger.info(f"[Result] {msg}")
+            return msg
         
         # 4. Stash result
         state_singleton.initiator_incoming_payload = responder_payload

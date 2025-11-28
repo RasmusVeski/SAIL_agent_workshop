@@ -77,7 +77,7 @@ async def send_a2a_response(event_queue: EventQueue, response_payload: WeightExc
             messageId=uuid4().hex
         )
         await event_queue.enqueue_event(response_message)
-        log.info(f"RESPONDER: Sent responder payload to agent {response_payload.agent_id}.")
+        log.info(f"RESPONDER: Successfully responded to initiator")
     except Exception as e:
         # Re-raise to be caught by the executor
         raise ValueError(f"Failed to build or enqueue response message: {e}")
@@ -154,8 +154,8 @@ async def send_and_parse_a2a_message(client: A2AClient,
             response_data.payload_b64, reference_model
         )
         if not responder_state_dict:
-             # Only raise error if payload WAS provided but failed
-            raise ValueError("Received corrupt payload from responder")
+            log.warning(f"INITIATOR: Partner {response_data.agent_id} sent invalid/empty weights (Possible Free-Rider).")
+            return response_data, None
             
         log.info(f"INITIATOR: Received valid weights from {response_data.agent_id}")
     else:
