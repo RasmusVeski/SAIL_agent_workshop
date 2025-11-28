@@ -35,7 +35,7 @@ def train(
 **Key Arguments:**
 * **`model`**: The model instance to train. **Tip:** Always pass a `copy.deepcopy()` of your model, not the live reference, unless you want to modify it in place.
 * **`global_model`** & **`mu`**: These control **FedProx**.
-    * If `mu > 0.0` and `global_model` is provided, the loss function adds a penalty term: $\frac{\mu}{2} ||w - w_{global}||^2$.
+    * If `mu > 0.0` and `global_model` is provided, the loss function adds a penalty term: (μ / 2) * sqrt( Σ (wᵢ − wᵢ_global)² ).
     * **Strategy:** Use higher `mu` (e.g., 0.5 - 1.0) to stay close to a known good state. Use `mu=0.0` to learn new data aggressively.
 * **`epochs`**: How many passes over the local data. **Warning:** High epochs (>2) can cause network timeouts for the partner waiting on you.
 
@@ -63,7 +63,7 @@ def evaluate(
 2.  **`accuracy`** (float): Overall accuracy percentage (0-100).
 3.  **`correct`** (int): Raw count of correct predictions.
 4.  **`total_samples`** (int): Total images in validation set.
-5.  **`classes_learned`** (int): **Critical Metric.** The number of classes where the model achieved $\ge 10\%$% accuracy. Max is 40.
+5.  **`classes_learned`** (int): **Critical Metric.** The number of classes where the model achieved $\ge 10\%$ accuracy. Max is 40.
     * *Use this to detect if knowledge transfer is happening even if overall accuracy is stagnant.*
 
 ---
