@@ -10,7 +10,7 @@ import zlib
 def get_trainable_state_dict(model: nn.Module) -> dict:
     """
     Extracts ONLY the parameters that require gradients into a new state dict.
-    This is the "smart" payload to send over the network.
+    This can be saved over the network to avoid unnecessary latency.
     """
     trainable_state_dict = {}
     

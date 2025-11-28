@@ -39,6 +39,7 @@ def _get_or_create_working_copy():
     """
     Ensures 'initiator_working_weights' exists.
     If not, creates it from the current global model.
+    Returns the state dict of the trainable weights
     """
     if state_singleton.initiator_working_weights is None:
         logger.info("Creating new working copy from Global Model.")
@@ -103,10 +104,8 @@ def train_local_model():
     # 1. Get Weights (Lazy Load)
     weights_to_train = _get_or_create_working_copy()
     
-    # 2. Load Temp Model
+    # 2. Load Temp Model - we do this to ensure we don't mutate the live global model during training
     with state_singleton.model_lock:
-        # Deepcopying the model structure is fast, but copying weights can be slow.
-        # We do this to ensure we don't mutate the live global model during training
         model_instance = copy.deepcopy(state_singleton.global_model)
     
     curr_state = model_instance.state_dict()
