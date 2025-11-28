@@ -63,7 +63,7 @@ def evaluate(
 2.  **`accuracy`** (float): Overall accuracy percentage (0-100).
 3.  **`correct`** (int): Raw count of correct predictions.
 4.  **`total_samples`** (int): Total images in validation set.
-5.  **`classes_learned`** (int): **Critical Metric.** The number of classes where the model achieved $\ge 10\%$ accuracy. Max is 40.
+5.  **`classes_learned`** (int): **Critical Metric.** The number of classes where the model achieved $\ge 10\%$% accuracy. Max is 40.
     * *Use this to detect if knowledge transfer is happening even if overall accuracy is stagnant.*
 
 ---
