@@ -88,8 +88,7 @@ docker build -t agent-image .
         -v ./app/sharded_data:/app/sharded_data \
         -v ./logs:/app/logs \
         --env-file ./.env \
-        agent-image:latest \
-        services/agents/without_llm/main.py
+        agent-image:latest
     ```
 
 
